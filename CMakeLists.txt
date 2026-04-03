@@ -66,7 +66,7 @@ include("${_scripts_src_path}/cmake/fetch_dependencies.cmake")
 fetch_dependency("https://github.com/buildingcpp/include.git;main")
 
 if (WORK_CONTRACT_BUILD_BENCHMARK)
-    fetch_dependency("https://github.com/fmtlib/fmt.git;master")
+    fetch_dependency("https://github.com/fmtlib/fmt.git;main")
     fetch_dependency("https://github.com/cameron314/concurrentqueue.git;master")
     #fetch_dependency("https://github.com/boostorg/lockfree.git;master")
     fetch_dependency("https://github.com/erez-strauss/lockfree_mpmc_queue.git;master")
