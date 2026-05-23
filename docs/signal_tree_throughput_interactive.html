@@ -2,23 +2,23 @@
 
 <div style="padding: 1rem 0;">
 
-  <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 12px; font-size: 13px;">
-    <div>
-      <span style="color: var(--color-text-secondary); margin-right: 8px;">Workload</span>
+  <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-bottom: 12px; font-size: 13px;">
+    <div style="display: flex; align-items: center;">
+      <span style="color: var(--color-text-secondary); margin-right: 8px; min-width: 58px; font-size:18; font-weight:bold;">Workload Type:</span>
       <div id="workload-group" style="display: inline-flex; gap: 4px;">
         <button data-val="static" class="seg-btn seg-on">Static</button>
         <button data-val="adversarial" class="seg-btn">Adversarial</button>
       </div>
     </div>
-    <div>
-      <span style="color: var(--color-text-secondary); margin-right: 8px;">View</span>
+    <div style="display: flex; align-items: center;">
+      <span style="color: var(--color-text-secondary); margin-right: 8px; min-width: 58px; font-size:18; font-weight:bold;">View:</span>
       <div id="view-group" style="display: inline-flex; gap: 4px;">
         <button data-val="total" class="seg-btn seg-on">Total</button>
-        <button data-val="per_thread" class="seg-btn">Per&nbsp;thread</button>
+        <button data-val="per_thread" class="seg-btn">Per&nbsp;Thread</button>
       </div>
     </div>
-    <div>
-      <span style="color: var(--color-text-secondary); margin-right: 8px;">Scale</span>
+    <div style="display: flex; align-items: center;">
+      <span style="color: var(--color-text-secondary); margin-right: 8px; min-width: 58px; font-size:18; font-weight:bold;">Scale:</span>
       <div id="scale-group" style="display: inline-flex; gap: 4px;">
         <button data-val="log" class="seg-btn seg-on">Log</button>
         <button data-val="linear" class="seg-btn">Linear</button>
@@ -118,7 +118,7 @@
   const state = {
     workload: 'static',
     view: 'total',
-    scale: 'log',
+    scale: 'linear',
     enabled: new Set(ALGO_ORDER),
   };
 
