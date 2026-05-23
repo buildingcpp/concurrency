@@ -37,13 +37,6 @@ The service-distance benchmark measures fairness rather than raw speed. It track
 - [Throughput explorer](https://buildingcpp.github.io/signal_tree/signal_tree_throughput_interactive.html)
 - [Service-distance explorer](https://buildingcpp.github.io/signal_tree/signal_tree_service_distance_v2.html)
 
-The source files are also available in the repository:
-
-- [`docs/index.html`](docs/index.html)
-- [`docs/signal_tree_throughput_interactive.html`](docs/signal_tree_throughput_interactive.html)
-- [`docs/signal_tree_service_distance_v2.html`](docs/signal_tree_service_distance_v2.html)
-
-
 # Signal Tree Size and Capacity
 
 `signal_tree<N>` controls the depth and natural capacity of one physical Signal Tree. The default spelling `bcpp::signal_tree tree;` deduces `signal_tree<1>`, and `bcpp::signal_set signals{capacity};` deduces `signal_set<1>`, which is the balanced default. `signal_tree<0>` is a single 64-bit leaf node and is useful for small or heavily sharded workloads. Larger `N` values create larger single-tree fairness domains, reducing the need for sharding but increasing the amount of tree state involved in selection.
