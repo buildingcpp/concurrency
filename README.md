@@ -33,8 +33,6 @@ The service-distance benchmark measures fairness rather than raw speed. It track
 
 ## Benchmark Results
 
-If GitHub Pages is enabled for this repository, use:
-
 - [Interactive benchmark dashboard](https://buildingcpp.github.io/signal_tree/)
 - [Throughput explorer](https://buildingcpp.github.io/signal_tree/signal_tree_throughput_interactive.html)
 - [Service-distance explorer](https://buildingcpp.github.io/signal_tree/signal_tree_service_distance_v2.html)
