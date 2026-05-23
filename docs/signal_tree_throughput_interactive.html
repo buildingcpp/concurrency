@@ -1,0 +1,272 @@
+<h2 class="sr-only">Interactive throughput comparison: Signal Tree variants vs queue baselines across thread counts.</h2>
+
+<div style="padding: 1rem 0;">
+
+  <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 12px; font-size: 13px;">
+    <div>
+      <span style="color: var(--color-text-secondary); margin-right: 8px;">Workload</span>
+      <div id="workload-group" style="display: inline-flex; gap: 4px;">
+        <button data-val="static" class="seg-btn seg-on">Static</button>
+        <button data-val="adversarial" class="seg-btn">Adversarial</button>
+      </div>
+    </div>
+    <div>
+      <span style="color: var(--color-text-secondary); margin-right: 8px;">View</span>
+      <div id="view-group" style="display: inline-flex; gap: 4px;">
+        <button data-val="total" class="seg-btn seg-on">Total</button>
+        <button data-val="per_thread" class="seg-btn">Per&nbsp;thread</button>
+      </div>
+    </div>
+    <div>
+      <span style="color: var(--color-text-secondary); margin-right: 8px;">Scale</span>
+      <div id="scale-group" style="display: inline-flex; gap: 4px;">
+        <button data-val="log" class="seg-btn seg-on">Log</button>
+        <button data-val="linear" class="seg-btn">Linear</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="algo-group" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;">
+    <button data-algo="Signal Tree&lt;0&gt;" class="algo-btn algo-on" style="--swatch:#1d9e75;"><span class="sw"></span>Signal Tree&lt;0&gt;</button>
+    <button data-algo="Signal Tree&lt;1&gt;" class="algo-btn algo-on" style="--swatch:#639922;"><span class="sw"></span>Signal Tree&lt;1&gt;</button>
+    <button data-algo="Signal Tree&lt;4&gt;" class="algo-btn algo-on" style="--swatch:#7f77dd;"><span class="sw"></span>Signal Tree&lt;4&gt;</button>
+    <button data-algo="MoodyCamel" class="algo-btn algo-on" style="--swatch:#d85a30;"><span class="sw"></span>MoodyCamel</button>
+    <button data-algo="TBB" class="algo-btn algo-on" style="--swatch:#d4537e;"><span class="sw"></span>TBB</button>
+    <button data-algo="LockFree" class="algo-btn algo-on" style="--swatch:#888780;"><span class="sw"></span>LockFree</button>
+  </div>
+
+  <div style="position: relative; width: 100%; height: 380px;">
+    <canvas id="throughputChart" role="img" aria-label="Throughput vs thread count, configurable workload, view, scale">Throughput chart showing Signal Tree variants and queue baselines across thread counts 1 through 16.</canvas>
+  </div>
+
+  <div id="readout" style="margin-top: 10px; font-size: 12px; color: var(--color-text-secondary); min-height: 18px;"></div>
+
+</div>
+
+<style>
+.seg-btn {
+  font-size: 13px;
+  padding: 5px 12px;
+  border: 0.5px solid var(--color-border-tertiary);
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+}
+.seg-btn.seg-on {
+  background: var(--color-background-secondary);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-secondary);
+}
+.algo-btn {
+  font-size: 12px;
+  padding: 5px 10px 5px 8px;
+  border: 0.5px solid var(--color-border-tertiary);
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.45;
+}
+.algo-btn.algo-on { opacity: 1; color: var(--color-text-primary); border-color: var(--color-border-secondary); }
+.algo-btn .sw {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 2px;
+  background: var(--swatch);
+}
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+(() => {
+  const threads = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
+
+  const SERIES = {
+    static: {
+      'Signal Tree<0>': [72895674,143497293,213089214,282823893,350145010,413938362,484426343,558326796,601121604,641645036,689753070,755660599,784839709,837108084,884846236,941619273],
+      'Signal Tree<1>': [40151735,79733218,118939806,157930754,196452790,235818749,275155702,314915937,351444941,384047133,415083752,448385989,478313366,511430892,542480473,584683749],
+      'Signal Tree<4>': [16770887,33465061,42011337,52817973,51914494,69993709,63125200,72954088,64421098,66725523,66805239,69809940,71314680,69662412,71112840,72148889],
+      'MoodyCamel':     [37972376,16779870,14245991,16927589,11692584,11689765,10735509,11532127,10949141,11163319,10925544,10563617,11545980,10905514,10717664,10685816],
+      'TBB':            [38736884,11256793,10705291,8794763,7613420,6305861,4824108,4234777,5277725,4405913,3343331,3094153,4183445,3420516,2734513,2589739],
+      'LockFree':       [30208466,15127493,10235542,7409788,4507905,4562589,4557169,4403038,3969226,3885215,3635243,2952948,3048623,2717201,2514187,2352973],
+    },
+    adversarial: {
+      'Signal Tree<0>': [72255048,143625690,213923486,284553626,348489247,410196621,472397537,514337704,556315329,543630111,555675086,533618371,554976986,599257198,554926177,564802425],
+      'Signal Tree<1>': [39871054,79454436,118999089,158269701,197398572,235985958,276523873,314872885,351135157,390749186,422569353,447180821,481093411,511752260,546130997,580507456],
+      'Signal Tree<4>': [16773051,33563144,47143430,45365384,43079525,42029299,41887320,44035460,38426454,39804410,37736350,37118480,39190321,37775993,35141820,35860786],
+      'MoodyCamel':     [34209725,14769558,14644347,16174964,11609833,11276121,11027364,11748776,10299734,10829497,10469797,11078740,10697275,11034813,10820934,11313141],
+      'TBB':            [30298779,11469878,10792680,8873953,7014193,6200466,4806942,4201383,4880534,4334492,3366549,3079747,3910639,3351546,2641432,2526783],
+      'LockFree':       [30665103,16345643,10546940,7714633,4543349,4553456,4580562,4362155,3952528,3858938,3450099,3157125,2979364,2611722,2584060,2453795],
+    }
+  };
+
+  const STYLE = {
+    'Signal Tree<0>': { color:'#1d9e75', dash:[],    point:'circle' },
+    'Signal Tree<1>': { color:'#639922', dash:[],    point:'circle' },
+    'Signal Tree<4>': { color:'#7f77dd', dash:[],    point:'circle' },
+    'MoodyCamel':     { color:'#d85a30', dash:[6,3], point:'rect'   },
+    'TBB':            { color:'#d4537e', dash:[6,3], point:'rect'   },
+    'LockFree':       { color:'#888780', dash:[2,3], point:'rect'   },
+  };
+
+  const ALGO_ORDER = ['Signal Tree<0>','Signal Tree<1>','Signal Tree<4>','MoodyCamel','TBB','LockFree'];
+
+  const state = {
+    workload: 'static',
+    view: 'total',
+    scale: 'log',
+    enabled: new Set(ALGO_ORDER),
+  };
+
+  const fmtM = v => {
+    if (v >= 1e9) return (v/1e9).toFixed(2) + 'B';
+    if (v >= 1e6) return (v/1e6).toFixed(v >= 100e6 ? 0 : 1) + 'M';
+    if (v >= 1e3) return (v/1e3).toFixed(0) + 'K';
+    return Math.round(v).toLocaleString();
+  };
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const textColor = isDark ? '#cccac4' : '#5f5e5a';
+
+  const ctx = document.getElementById('throughputChart').getContext('2d');
+
+  function buildDatasets() {
+    return ALGO_ORDER.filter(n => state.enabled.has(n)).map(n => {
+      const raw = SERIES[state.workload][n];
+      const data = state.view === 'per_thread'
+        ? raw.map((v, i) => v / threads[i])
+        : raw;
+      const s = STYLE[n];
+      return {
+        label: n,
+        data,
+        borderColor: s.color,
+        backgroundColor: s.color,
+        borderDash: s.dash,
+        borderWidth: 2.2,
+        pointStyle: s.point,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        tension: 0.15,
+      };
+    });
+  }
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: threads, datasets: buildDatasets() },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 250 },
+      interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => 'threads: ' + items[0].label,
+            label: ctx => {
+              const v = ctx.parsed.y;
+              const suffix = state.view === 'per_thread' ? '/thread' : '';
+              return ctx.dataset.label + '  ' + fmtM(v) + ' signals/sec' + suffix;
+            },
+          },
+          backgroundColor: isDark ? 'rgba(40,40,40,0.95)' : 'rgba(255,255,255,0.97)',
+          titleColor: isDark ? '#fff' : '#222',
+          bodyColor: isDark ? '#eee' : '#333',
+          borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
+          borderWidth: 1,
+          padding: 10,
+          boxPadding: 4,
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Threads', color: textColor, font:{ size: 12 } },
+          ticks: { color: textColor, autoSkip: false, font:{ size: 11 } },
+          grid: { color: gridColor },
+        },
+        y: {
+          type: 'logarithmic',
+          title: { display: true, text: 'Signals / second', color: textColor, font:{ size: 12 } },
+          ticks: {
+            color: textColor,
+            font: { size: 11 },
+            callback: v => fmtM(v),
+          },
+          grid: { color: gridColor },
+        }
+      }
+    }
+  });
+
+  function refresh() {
+    chart.options.scales.y.type = state.scale === 'log' ? 'logarithmic' : 'linear';
+    chart.options.scales.y.title.text = state.view === 'per_thread'
+      ? 'Signals / second / thread'
+      : 'Signals / second (total)';
+    chart.data.datasets = buildDatasets();
+
+    // headline readout: 16-thread comparison ratio
+    const data16 = ALGO_ORDER
+      .filter(n => state.enabled.has(n))
+      .map(n => {
+        const raw = SERIES[state.workload][n][15];
+        const v = state.view === 'per_thread' ? raw / 16 : raw;
+        return { n, v };
+      })
+      .sort((a, b) => b.v - a.v);
+
+    if (data16.length >= 2) {
+      const top = data16[0], bot = data16[data16.length - 1];
+      const ratio = top.v / bot.v;
+      const ratioText = ratio >= 100 ? Math.round(ratio) + '×'
+                      : ratio >= 10  ? ratio.toFixed(1) + '×'
+                                     : ratio.toFixed(2) + '×';
+      document.getElementById('readout').textContent =
+        `At 16 threads: ${top.n} ${fmtM(top.v)}${state.view==='per_thread'?'/thread':''}, ${bot.n} ${fmtM(bot.v)}${state.view==='per_thread'?'/thread':''}  —  ${ratioText} gap`;
+    } else {
+      document.getElementById('readout').textContent = '';
+    }
+
+    chart.update();
+  }
+
+  function wireSeg(groupId, key) {
+    const group = document.getElementById(groupId);
+    group.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-val]');
+      if (!btn) return;
+      group.querySelectorAll('button').forEach(b => b.classList.remove('seg-on'));
+      btn.classList.add('seg-on');
+      state[key] = btn.dataset.val;
+      refresh();
+    });
+  }
+  wireSeg('workload-group', 'workload');
+  wireSeg('view-group', 'view');
+  wireSeg('scale-group', 'scale');
+
+  document.getElementById('algo-group').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-algo]');
+    if (!btn) return;
+    const algo = btn.dataset.algo;
+    if (state.enabled.has(algo)) {
+      if (state.enabled.size === 1) return; // never empty
+      state.enabled.delete(algo);
+      btn.classList.remove('algo-on');
+    } else {
+      state.enabled.add(algo);
+      btn.classList.add('algo-on');
+    }
+    refresh();
+  });
+
+  refresh();
+})();
+</script>
