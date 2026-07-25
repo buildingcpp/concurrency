@@ -55,7 +55,7 @@ namespace bcpp
             {
                 constexpr std::uint64_t hint_offset = Traits::hint_offset;
                 constexpr std::uint64_t lane_width = Traits::lane_width;
-                constexpr std::uint64_t local_hint_bit = std::uint64_t{1} << (hint_offset + std::bit_width(L) - 2);
+                constexpr std::uint64_t hint_bit = (L / 2) << hint_offset;
                 constexpr std::uint64_t half_counters = L / 2;
                 constexpr std::uint64_t bits_per_half = half_counters * lane_width;
                 constexpr std::uint64_t high_mask = ((std::uint64_t{1} << bits_per_half) - 1ull) << bits_per_half;
@@ -64,19 +64,19 @@ namespace bcpp
                 auto const right = counters >> bits_per_half;
                 auto const leftEmpty = (left == 0);
                 auto const rightEmpty = (right == 0);
-                auto const preferRight = ((hint & local_hint_bit) != 0);
+                auto const preferRight = ((hint & hint_bit) != 0);
                 auto const selectedRight = preferRight ? not rightEmpty : leftEmpty;
 
                 if (selectedRight)
                 {
-                    mask &= ~local_hint_bit;
+                    mask &= ~hint_bit;
                     return half_counters + tournament<Traits, half_counters>(hint, right, mask);
                 }
 
                 if (preferRight)
-                    mask &= ~((local_hint_bit << 1) - 1ull);
+                    mask &= ~((hint_bit << 1) - 1ull);
                 else if (rightEmpty)
-                    mask &= ~local_hint_bit;
+                    mask &= ~hint_bit;
 
                 return tournament<Traits, half_counters>(hint, left, mask);
             }
