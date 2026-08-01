@@ -14,7 +14,6 @@ namespace bcpp
 
     template <std::size_t N> class signal_tree;
     template <std::size_t N> class signal_set;
-    template <std::size_t N, std::size_t capacity> class signal_tree_level;
 
 
     //==============================================================================
@@ -55,7 +54,6 @@ namespace bcpp
 
         template <std::size_t M> friend class signal_tree;
         template <std::size_t M> friend class signal_set;
-        template <std::size_t M, std::size_t Cap> friend class signal_tree_level;
     };
 
 } // namespace bcpp
