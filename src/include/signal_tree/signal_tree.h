@@ -41,16 +41,11 @@ namespace bcpp
         template <std::size_t Level>
         aligned_node & node(signal_id) noexcept;
 
-        bool set_leaf(signal_id) noexcept;
-
         template <std::size_t Level>
-        void set_branch(signal_id) noexcept;
-
-        template <typename Selector>
-        signal_id select_leaf(signal_id, signal_id &, Selector &) noexcept;
+        bool set(signal_id) noexcept;
 
         template <std::size_t Level, typename Selector>
-        signal_id select_branch(signal_id, signal_id &, Selector &) noexcept;
+        signal_id select(signal_id, signal_id &, Selector &) noexcept;
 
         std::array<aligned_node, layout::node_count> node_;
     };
@@ -73,14 +68,7 @@ template <bcpp::selector_concept Selector>
 
     Selector selector{std::integral_constant<std::size_t, capacity>{}};
     signal_id nextHintCandidate;
-
-    auto selected = [&]
-    {
-        if constexpr (N == 0)
-            return select_leaf(hint, nextHintCandidate, selector);
-        else
-            return select_branch<N>(hint, nextHintCandidate, selector);
-    }();
+    auto selected = select<N>(hint, nextHintCandidate, selector);
 
     if (not selected.valid())
     {
@@ -102,7 +90,7 @@ inline bool bcpp::signal_tree<N>::set
     signal_id index
 ) noexcept
 {
-    return set_leaf(index);
+    return set<0>(index);
 }
 
 
@@ -134,99 +122,70 @@ inline auto bcpp::signal_tree<N>::node
 
 //==============================================================================
 template <std::size_t N>
-inline bool bcpp::signal_tree<N>::set_leaf
-(
-    signal_id signal
-) noexcept
-{
-    using traits = node_traits<0>;
-    auto & leaf = node<0>(signal);
-    auto const signalBit = std::uint64_t{1} << (signal.value_ % traits::lanes_per_node);
-    auto const setSuccessful = (leaf.value_.fetch_or(signalBit, std::memory_order_release) & signalBit) == 0;
-
-    if constexpr (N > 0)
-        if (setSuccessful)
-            set_branch<1>(signal);
-
-    return setSuccessful;
-}
-
-
-//==============================================================================
-template <std::size_t N>
 template <std::size_t Level>
-inline void bcpp::signal_tree<N>::set_branch
+inline bool bcpp::signal_tree<N>::set
 (
     signal_id signal
 ) noexcept
 {
-    using traits = node_traits<Level>;
-    using child_traits = node_traits<Level - 1>;
-    auto & branch = node<Level>(signal);
-    auto const laneIndex = (signal.value_ / child_traits::node_capacity) % traits::lanes_per_node;
-    auto const addend = std::uint64_t{1} << (laneIndex * traits::lane_width);
+    static_assert(Level <= N);
 
-    branch.value_.fetch_add(addend, std::memory_order_release);
-
-    if constexpr (Level < N)
-        set_branch<Level + 1>(signal);
-}
-
-
-//==============================================================================
-template <std::size_t N>
-template <typename Selector>
-inline auto bcpp::signal_tree<N>::select_leaf
-(
-    signal_id hint,
-    signal_id & newHintOut,
-    Selector &
-) noexcept -> signal_id
-{
-    using traits = node_traits<0>;
-    static constexpr auto leafSlotMask = (std::uint64_t{1} << traits::hint_width) - std::uint64_t{1};
-
-    auto & leaf = node<0>(hint);
-    auto const nodeBase = hint.value_ & ~leafSlotMask;
-    auto const hintedLane = hint.value_ & leafSlotMask;
-    auto candidate = leaf.value_.load(std::memory_order_relaxed);
-    auto const forwardMask = ~std::uint64_t{0} << hintedLane;
-    auto observed = candidate & forwardMask;
-
-    while (observed != 0)
+    if constexpr (Level == 0)
     {
-        auto const lane = static_cast<std::size_t>(std::countr_zero(observed));
-        auto const bit = std::uint64_t{1} << lane;
-        auto const prior = leaf.value_.fetch_and(~bit, std::memory_order_acq_rel);
-        candidate = prior & ~bit;
+        using traits = node_traits<0>;
+        auto & leaf = node<0>(signal);
+        auto const signalBit = std::uint64_t{1} << (signal.value_ % traits::lanes_per_node);
+        auto const setSuccessful = (leaf.value_.fetch_or(signalBit, std::memory_order_release) & signalBit) == 0;
 
-        if ((prior & bit) != 0)
-        {
-            auto const selected = hint.template with_lane<0>(lane);
-            auto const nextMask = (lane + 1ull < traits::lanes_per_node)
-                    ? ~std::uint64_t{0} << (lane + 1ull)
-                    : std::uint64_t{0};
-            auto const next = candidate & nextMask;
+        if constexpr (N > 0)
+            if (setSuccessful)
+                set<1>(signal);
 
-            newHintOut = (next != 0)
-                    ? signal_id{nodeBase + static_cast<std::uint64_t>(std::countr_zero(next))}
-                    : signal_id{};
-            return selected;
-        }
-
-        observed = candidate & forwardMask;
-    }
-
-    if constexpr (N == 0)
-    {
-        newHintOut = {};
-        return {};
+        return setSuccessful;
     }
     else
     {
-        observed = candidate;
+        using traits = node_traits<Level>;
+        using child_traits = node_traits<Level - 1>;
+        auto & branch = node<Level>(signal);
+        auto const laneIndex = (signal.value_ / child_traits::node_capacity) % traits::lanes_per_node;
+        auto const addend = std::uint64_t{1} << (laneIndex * traits::lane_width);
 
-        while (true)
+        branch.value_.fetch_add(addend, std::memory_order_release);
+
+        if constexpr (Level < N)
+            set<Level + 1>(signal);
+
+        return true;
+    }
+}
+
+
+//==============================================================================
+template <std::size_t N>
+template <std::size_t Level, typename Selector>
+inline auto bcpp::signal_tree<N>::select
+(
+    signal_id hint,
+    signal_id & naturalNextOut,
+    Selector & selector
+) noexcept -> signal_id
+{
+    static_assert(Level <= N);
+
+    if constexpr (Level == 0)
+    {
+        using traits = node_traits<0>;
+        static constexpr auto leafSlotMask = (std::uint64_t{1} << traits::hint_width) - std::uint64_t{1};
+
+        auto & leaf = node<0>(hint);
+        auto const nodeBase = hint.value_ & ~leafSlotMask;
+        auto const hintedLane = hint.value_ & leafSlotMask;
+        auto candidate = leaf.value_.load(std::memory_order_relaxed);
+        auto const forwardMask = ~std::uint64_t{0} << hintedLane;
+        auto observed = candidate & forwardMask;
+
+        while (observed != 0)
         {
             auto const lane = static_cast<std::size_t>(std::countr_zero(observed));
             auto const bit = std::uint64_t{1} << lane;
@@ -241,7 +200,7 @@ inline auto bcpp::signal_tree<N>::select_leaf
                         : std::uint64_t{0};
                 auto const next = candidate & nextMask;
 
-                newHintOut = (next != 0)
+                naturalNextOut = (next != 0)
                         ? signal_id{nodeBase + static_cast<std::uint64_t>(std::countr_zero(next))}
                         : signal_id{};
                 return selected;
@@ -249,45 +208,66 @@ inline auto bcpp::signal_tree<N>::select_leaf
 
             observed = candidate;
         }
-    }
-}
 
-
-//==============================================================================
-template <std::size_t N>
-template <std::size_t Level, typename Selector>
-inline auto bcpp::signal_tree<N>::select_branch
-(
-    signal_id hint,
-    signal_id & naturalNextOut,
-    Selector & selector
-) noexcept -> signal_id
-{
-    using traits = node_traits<Level>;
-    auto & branch = node<Level>(hint);
-    auto candidate = branch.value_.load(std::memory_order_relaxed);
-
-    while (candidate != 0)
-    {
-        auto attemptSelector = selector;
-        auto const selected = attemptSelector.select(traits{}, hint.value_, candidate);
-        auto const laneAddend = std::uint64_t{1} << (selected * traits::lane_width);
-
-        if (branch.value_.compare_exchange_strong(candidate, candidate - laneAddend, std::memory_order_acq_rel,
-                std::memory_order_relaxed))
+        if constexpr (N == 0)
         {
-            selector = attemptSelector;
+            naturalNextOut = {};
+            return {};
+        }
+        else
+        {
+            observed = candidate;
 
-            if (auto const localHint = hint.template lane<Level>(); selected != localHint)
-                hint = hint.template with_lane<Level>(selected);
+            while (true)
+            {
+                auto const lane = static_cast<std::size_t>(std::countr_zero(observed));
+                auto const bit = std::uint64_t{1} << lane;
+                auto const prior = leaf.value_.fetch_and(~bit, std::memory_order_acq_rel);
+                candidate = prior & ~bit;
 
-            if constexpr (Level == 1)
-                return select_leaf(hint, naturalNextOut, selector);
-            else
-                return select_branch<Level - 1>(hint, naturalNextOut, selector);
+                if ((prior & bit) != 0)
+                {
+                    auto const selected = hint.template with_lane<0>(lane);
+                    auto const nextMask = (lane + 1ull < traits::lanes_per_node)
+                            ? ~std::uint64_t{0} << (lane + 1ull)
+                            : std::uint64_t{0};
+                    auto const next = candidate & nextMask;
+
+                    naturalNextOut = (next != 0)
+                            ? signal_id{nodeBase + static_cast<std::uint64_t>(std::countr_zero(next))}
+                            : signal_id{};
+                    return selected;
+                }
+
+                observed = candidate;
+            }
         }
     }
+    else
+    {
+        using traits = node_traits<Level>;
+        auto & branch = node<Level>(hint);
+        auto candidate = branch.value_.load(std::memory_order_relaxed);
 
-    naturalNextOut = {};
-    return {};
+        while (candidate != 0)
+        {
+            auto attemptSelector = selector;
+            auto const selected = attemptSelector.select(traits{}, hint.value_, candidate);
+            auto const laneAddend = std::uint64_t{1} << (selected * traits::lane_width);
+
+            if (branch.value_.compare_exchange_strong(candidate, candidate - laneAddend, std::memory_order_acq_rel,
+                    std::memory_order_relaxed))
+            {
+                selector = attemptSelector;
+
+                if (auto const localHint = hint.template lane<Level>(); selected != localHint)
+                    hint = hint.template with_lane<Level>(selected);
+
+                return select<Level - 1>(hint, naturalNextOut, selector);
+            }
+        }
+
+        naturalNextOut = {};
+        return {};
+    }
 }
