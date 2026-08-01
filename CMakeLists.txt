@@ -3,6 +3,8 @@ set(CMAKE_CXX_STANDARD 20)
 
 project(signal_tree)
 
+include(CTest)
+
 option(SIGNAL_TREE_BUILD_BENCHMARK "build signal tree benchmarks" ON)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -72,4 +74,3 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/${PROJECT_NAME})
 set(_${PROJECT_NAME}_dir ${CMAKE_CURRENT_SOURCE_DIR} CACHE STRING "")
 
 add_subdirectory(src)
-
