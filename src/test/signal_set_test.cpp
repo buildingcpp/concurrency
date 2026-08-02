@@ -5,6 +5,8 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -119,6 +121,108 @@ namespace
                 "selection must continue into the next nonempty physical tree");
     }
 
+
+    template <typename MakeSignals>
+    void require_leaf_selection
+    (
+        std::string_view caseName,
+        MakeSignals makeSignals,
+        std::initializer_list<std::uint64_t> ready,
+        std::uint64_t initialHint,
+        std::initializer_list<std::uint64_t> expected
+    )
+    {
+        constexpr auto treeCapacity = bcpp::signal_tree<0>::capacity;
+        auto signals = makeSignals();
+
+        for (auto signal : ready)
+            test_support::require(signals.set(bcpp::signal_id{signal}), caseName);
+
+        auto hint = bcpp::signal_id{initialHint};
+
+        for (auto selected = expected.begin(); selected != expected.end(); ++selected)
+        {
+            test_support::require(signals.select(hint) == bcpp::signal_id{*selected}, caseName);
+
+            auto const next = selected + 1;
+            auto const sameTree = (next != expected.end()) && ((*selected / treeCapacity) == (*next / treeCapacity));
+            if ((sameTree) && (*selected < *next))
+                test_support::require(hint == bcpp::signal_id{*next}, caseName);
+        }
+
+        test_support::require(not signals.select(hint).valid(), caseName);
+        test_support::require(not hint.valid(), caseName);
+    }
+
+
+    template <typename MakeSignals>
+    void run_local_leaf_selection_matrix
+    (
+        MakeSignals makeSignals,
+        std::uint64_t offset
+    )
+    {
+        constexpr auto treeCapacity = bcpp::signal_tree<0>::capacity;
+
+        require_leaf_selection("one signal, hint before", makeSignals,
+                {offset + 3}, offset + 2, {offset + 3});
+        require_leaf_selection("one signal, hint at", makeSignals,
+                {offset + 3}, offset + 3, {offset + 3});
+        require_leaf_selection("one signal, hint after", makeSignals,
+                {offset + 3}, offset + treeCapacity - 2, {offset + 3});
+        require_leaf_selection("two signals, hint before", makeSignals,
+                {offset + 3, offset + 5}, offset + 2, {offset + 3, offset + 5});
+        require_leaf_selection("two signals, hint at first", makeSignals,
+                {offset + 3, offset + 5}, offset + 3, {offset + 3, offset + 5});
+        require_leaf_selection("two signals, hint between", makeSignals,
+                {offset + 3, offset + 5}, offset + 4, {offset + 5, offset + 3});
+        require_leaf_selection("two signals, hint at second", makeSignals,
+                {offset + 3, offset + 5}, offset + 5, {offset + 5, offset + 3});
+        require_leaf_selection("two signals, hint after", makeSignals,
+                {offset + 3, offset + 5}, offset + treeCapacity - 2, {offset + 3, offset + 5});
+    }
+
+
+    void one_shard_leaf_selection_matrix()
+    {
+        constexpr auto treeCapacity = bcpp::signal_tree<0>::capacity;
+        run_local_leaf_selection_matrix([=] { return bcpp::signal_set<0>{treeCapacity}; }, 0);
+    }
+
+
+    void two_shard_leaf_selection_matrix()
+    {
+        constexpr auto treeCapacity = bcpp::signal_tree<0>::capacity;
+        run_local_leaf_selection_matrix([=] { return bcpp::signal_set<0>{treeCapacity * 2}; }, treeCapacity);
+    }
+
+
+    void many_shard_leaf_selection_matrix()
+    {
+        constexpr auto treeCapacity = bcpp::signal_tree<0>::capacity;
+        run_local_leaf_selection_matrix([=] { return bcpp::signal_set<0>{treeCapacity * 9}; }, treeCapacity * 4);
+    }
+
+
+    void leaf_shard_traversal_matrix()
+    {
+        constexpr auto treeCapacity = bcpp::signal_tree<0>::capacity;
+
+        require_leaf_selection("two shards visit next before wrap",
+                [=] { return bcpp::signal_set<0>{treeCapacity * 2}; },
+                {3, 5, treeCapacity + 4}, treeCapacity - 2, {treeCapacity + 4, 3, 5});
+        require_leaf_selection("three shards skip empty middle",
+                [=] { return bcpp::signal_set<0>{treeCapacity * 3}; },
+                {3, 5, (treeCapacity * 2) + 4}, treeCapacity - 2, {(treeCapacity * 2) + 4, 3, 5});
+        require_leaf_selection("three shards preserve circular order",
+                [=] { return bcpp::signal_set<0>{treeCapacity * 3}; },
+                {3, treeCapacity + 4, (treeCapacity * 2) + 5}, treeCapacity - 2,
+                {treeCapacity + 4, (treeCapacity * 2) + 5, 3});
+        require_leaf_selection("many shards skip empty trees",
+                [=] { return bcpp::signal_set<0>{treeCapacity * 9}; },
+                {3, 5, (treeCapacity * 8) + 4}, treeCapacity - 2, {(treeCapacity * 8) + 4, 3, 5});
+    }
+
 } // namespace
 
 
@@ -138,5 +242,9 @@ int main()
         test_support::run("signal_set<0> hinted tree", selection_starts_in_the_hinted_tree<0>);
         test_support::run("signal_set<1> hinted tree", selection_starts_in_the_hinted_tree<1>);
         test_support::run("signal_set<2> hinted tree", selection_starts_in_the_hinted_tree<2>);
+        test_support::run("signal_set<0> one-shard leaf selection matrix", one_shard_leaf_selection_matrix);
+        test_support::run("signal_set<0> two-shard leaf selection matrix", two_shard_leaf_selection_matrix);
+        test_support::run("signal_set<0> many-shard leaf selection matrix", many_shard_leaf_selection_matrix);
+        test_support::run("signal_set<0> leaf shard traversal matrix", leaf_shard_traversal_matrix);
     });
 }

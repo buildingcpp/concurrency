@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -135,6 +137,53 @@ namespace
     }
 
 
+    template <typename MakeTree>
+    void require_leaf_selection
+    (
+        std::string_view caseName,
+        MakeTree makeTree,
+        std::initializer_list<std::uint64_t> ready,
+        std::uint64_t initialHint,
+        std::initializer_list<std::uint64_t> expected
+    )
+    {
+        auto tree = makeTree();
+
+        for (auto signal : ready)
+            test_support::require(tree.set(bcpp::signal_id{signal}), caseName);
+
+        auto hint = bcpp::signal_id{initialHint};
+
+        for (auto selected = expected.begin(); selected != expected.end(); ++selected)
+        {
+            test_support::require(tree.select(hint) == bcpp::signal_id{*selected}, caseName);
+
+            auto const next = selected + 1;
+            if ((next != expected.end()) && (*selected < *next))
+                test_support::require(hint == bcpp::signal_id{*next}, caseName);
+        }
+
+        test_support::require(not tree.select(hint).valid(), caseName);
+        test_support::require(tree.empty(), caseName);
+    }
+
+
+    void leaf_selection_matrix()
+    {
+        constexpr auto capacity = bcpp::signal_tree<0>::capacity;
+        auto makeTree = [] { return bcpp::signal_tree<0>{}; };
+
+        require_leaf_selection("one signal, hint before", makeTree, {3}, 2, {3});
+        require_leaf_selection("one signal, hint at", makeTree, {3}, 3, {3});
+        require_leaf_selection("one signal, hint after", makeTree, {3}, capacity - 2, {3});
+        require_leaf_selection("two signals, hint before", makeTree, {3, 5}, 2, {3, 5});
+        require_leaf_selection("two signals, hint at first", makeTree, {3, 5}, 3, {3, 5});
+        require_leaf_selection("two signals, hint between", makeTree, {3, 5}, 4, {5, 3});
+        require_leaf_selection("two signals, hint at second", makeTree, {3, 5}, 5, {5, 3});
+        require_leaf_selection("two signals, hint after", makeTree, {3, 5}, capacity - 2, {3, 5});
+    }
+
+
     template <std::size_t N>
     void densest_selector_prefers_the_densest_root_child()
     {
@@ -167,6 +216,7 @@ int main()
         test_support::run("signal_tree<0> full capacity", fill_and_drain<0>);
         test_support::run("signal_tree<1> full capacity", fill_and_drain<1>);
         test_support::run("signal_tree<2> full capacity", fill_and_drain<2>);
+        test_support::run("signal_tree<0> leaf selection matrix", leaf_selection_matrix);
         test_support::run("signal_tree<1> branch wrap", branch_selection_wraps_to_ready_work<1>);
         test_support::run("signal_tree<2> branch wrap", branch_selection_wraps_to_ready_work<2>);
         test_support::run("signal_tree<1> densest selector", densest_selector_prefers_the_densest_root_child<1>);

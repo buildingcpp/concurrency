@@ -23,4 +23,5 @@ endfunction()
 
 add_signal_tree_test(signal_tree_test)
 add_signal_tree_test(signal_set_test)
+add_signal_tree_test(selection_contract_test)
 add_signal_tree_test(signal_tree_concurrency_test)
