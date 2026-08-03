@@ -530,8 +530,8 @@ The repository currently targets C++20 and Linux/POSIX. Its CMake build fetches
 the Building C++ support libraries:
 
 ```bash
-git clone https://github.com/buildingcpp/work_contract.git
-cd work_contract
+git clone https://github.com/buildingcpp/concurrency.git
+cd concurrency
 
 cmake -S . -B build \
     -DCMAKE_BUILD_TYPE=Release \

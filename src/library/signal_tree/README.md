@@ -8,7 +8,7 @@ Complete READMEs are coming soon.
 
 Repository:
 
-https://github.com/buildingcpp/signal_tree
+https://github.com/buildingcpp/concurrency
 
 ## Talks
 
