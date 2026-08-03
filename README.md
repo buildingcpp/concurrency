@@ -121,6 +121,106 @@ if (auto selected = signals.select(hint); selected.valid())
 
 The `hint` is caller-owned state. Keep one hint per selecting thread or per selector context. Reusing the hint improves locality and fairness behavior. Do not treat the hint as a selected signal; it is only a search position for the next call.
 
+## Selection contract
+
+The fundamental selection guarantee is availability:
+
+> If any signal remains raised in a `signal_tree` or `signal_set`, `select()` shall
+> return a valid signal. It shall return an invalid signal only when no raised
+> signal remains available for selection.
+
+For a stable set of raised signals, a successful call clears and returns exactly
+one signal. Repeated calls must drain every raised signal without duplication or
+omission. An empty selection returns an invalid signal and invalidates the hint
+for both `signal_tree` and `signal_set`.
+
+With the default selector, traversal begins at the supplied hint. The hinted
+signal is selected when it is raised; otherwise selection proceeds toward the
+next available signal and wraps when necessary. An invalid or out-of-range hint
+starts traversal from signal zero.
+
+For `signal_tree<0>`, this is exact circular numeric ordering. With signals `3`
+and `5` raised:
+
+| Initial hint | Selection order |
+|---:|---:|
+| `2` or `3` | `3`, then `5` |
+| `4` or `5` | `5`, then `3` |
+| `62` | `3`, then `5` |
+
+In the final case, selecting `3` updates the hint to `5`; the known next signal
+must not be discarded during wraparound.
+
+Larger trees use parent counters containing the sum of raised signals in each
+child. Selection reserves a path by decrementing those counters while descending
+the tree. After making that reservation, selection must consume a signal from the
+reserved child to preserve the parent/child sum invariant. If the forward portion
+of that child contains no raised signal, selection may move backward within the
+child rather than abandon the reservation. This is the permitted exception to
+strict forward traversal for `signal_tree<1>` and larger.
+
+`signal_set` extends the same guarantee across every physical tree. Empty trees,
+shard boundaries, and wraparound must not cause an invalid result while another
+tree contains a raised signal. A depth-zero set retains exact circular numeric
+ordering across its shards. Sets using larger trees retain the permitted backward
+selection within a reserved child.
+
+On success, the updated hint is the preferred starting position for the next
+call. It is continuation state, not a promise that the hinted signal is currently
+raised. Alternative selectors may replace the default hint-order preference, but
+they do not weaken the availability, single-consumption, or parent/child sum
+guarantees.
+
+Concurrent setters may publish signals while selection is traversing, and other
+selectors may consume them. No snapshot ordering is promised in that case. In
+particular, a selector may return invalid if another selector consumes the final
+raised signal before it can be claimed. A successfully reserved selection must
+still complete without losing or duplicating a signal.
+
+An optional strict-forward traversal is recorded as future work in
+[FUTURE_WORK.md](FUTURE_WORK.md). It is not part of the current selection
+contract.
+
+## Blocking selection
+
+Blocking selection is enabled at compile time:
+
+```cpp
+using blocking_signal_set =
+        bcpp::signal_set<1, bcpp::synchronization_mode::blocking>;
+
+blocking_signal_set signals{1024};
+auto hint = bcpp::signal_id{0};
+auto selected = signals.select(hint, std::chrono::milliseconds{10});
+```
+
+The duration overload first performs an ordinary immediate selection. If no
+signal is available, it waits until a signal becomes available, the timeout
+expires, or `stop()` interrupts the wait. A timeout of zero performs exactly one
+immediate selection attempt and never waits. Ordinary `select(hint)` remains
+immediate even on a blocking signal set or tree.
+
+### Stop contract
+
+`stop()` is a terminal state for waiting, not for signaling or selection. It
+wakes calls currently blocked in timed selection. A blocked call that observes
+the stopped state returns an invalid signal. Future timed selections still make
+their initial immediate selection attempt, but return invalid instead of waiting
+when that attempt finds no signal.
+
+Stopping does not clear raised signals. `set()`, ordinary immediate `select()`,
+and `try_select()` on a blocking `signal_tree` remain usable after stopping. A
+ready signal may therefore still be selected after `stop()`. If `stop()`,
+`set()`, and selection race, a timed selector may either return a signal or
+return invalid while a signal remains raised; `stop()` does not impose ordering
+on concurrent signal operations.
+
+Stopping is permanent and may be requested more than once. There is no restart
+operation. Before destroying a blocking signal set or tree, the owner must call
+`stop()` and join or otherwise synchronize with every thread that could still be
+executing a timed selection. Destruction while another thread is using the
+object is unsupported.
+
 ## Typical worker loop
 
 ```cpp

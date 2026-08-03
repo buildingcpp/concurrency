@@ -12,9 +12,9 @@
 namespace bcpp
 {
 
-    template <std::size_t N> class signal_tree;
-    template <std::size_t N> class signal_set;
-    template <std::size_t N, std::size_t capacity> class signal_tree_level;
+    enum class synchronization_mode : std::uint32_t;
+    template <std::size_t tree_depth, synchronization_mode mode> class signal_tree;
+    template <std::size_t tree_depth, synchronization_mode mode> class signal_set;
 
 
     //==============================================================================
@@ -53,9 +53,8 @@ namespace bcpp
 
         value_type value_ = std::numeric_limits<value_type>::max();
 
-        template <std::size_t M> friend class signal_tree;
-        template <std::size_t M> friend class signal_set;
-        template <std::size_t M, std::size_t Cap> friend class signal_tree_level;
+        template <std::size_t, synchronization_mode> friend class signal_tree;
+        template <std::size_t, synchronization_mode> friend class signal_set;
     };
 
 } // namespace bcpp
