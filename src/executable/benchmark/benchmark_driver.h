@@ -9,7 +9,7 @@
 //
 // Methodology mirrors the original benchmark: a fixed population of contracts, all
 // initially scheduled, each of which re-schedules itself when executed (via
-// bcpp::this_contract::schedule) so the group never drains.  Worker threads spin
+// bcpp::concurrency::this_contract::schedule) so the group never drains.  Worker threads spin
 // on execute_next_contract for a fixed wall-clock window; we report tasks/sec plus
 // the coefficient of variation across tasks and across threads as fairness signals.
 
@@ -36,7 +36,7 @@
 #include <vector>
 
 
-namespace bcpp::benchmark
+namespace bcpp::concurrency::benchmark
 {
 
     // fixed so per-task counters can live in a thread_local array (no hot path alloc)
@@ -274,7 +274,7 @@ namespace bcpp::benchmark
                         [taskFn, taskId]()
                         {
                             (void)taskFn();                     // the task
-                            bcpp::this_contract::schedule();    // re-arm, like re-queuing
+                            bcpp::concurrency::this_contract::schedule();    // re-arm, like re-queuing
                             ++tls_execution_count[taskId];      // lands in executing thread's array
                         });
             }
@@ -443,4 +443,4 @@ namespace bcpp::benchmark
         return cfg;
     }
 
-} // namespace bcpp::benchmark
+} // namespace bcpp::concurrency::benchmark

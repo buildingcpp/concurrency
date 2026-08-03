@@ -4,16 +4,15 @@ add_library(work_contract
     ./work_contract_this.cpp
 )
 
+add_library(bcpp::work_contract ALIAS work_contract)
 
 target_link_libraries(work_contract
-    pthread
-    rt
+PUBLIC
+    bcpp::signal_tree
 )
 
 
 target_include_directories(work_contract
 PUBLIC
-    ${_work_contract_dir}/src
-    ${_include_dir}/src
-    ${_signal_tree_dir}/src
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/../..>
 )

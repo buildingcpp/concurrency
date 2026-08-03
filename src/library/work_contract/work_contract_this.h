@@ -6,7 +6,7 @@
 #include <include/non_movable.h>
 
 
-namespace bcpp
+namespace bcpp::concurrency
 {
 
     //==============================================================================
@@ -58,4 +58,4 @@ namespace bcpp
 
     }; // struct this_contract
 
-} // namespace bcpp
+} // namespace bcpp::concurrency

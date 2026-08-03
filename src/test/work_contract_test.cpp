@@ -1,8 +1,9 @@
 // Correctness / stress validation for the signal_tree backed work_contract.
 //
 // Covers concurrent execution (exact counts under contention), slot recycling,
-// stale-handle safety, handle-outlives-group, and the group-level exception and
-// release handlers.  See ../../CONCURRENCY.md for the model these exercise.
+// stale-handle safety, handle-outlives-group, and the per-contract exception and
+// release handlers.  See ../library/work_contract/CONCURRENCY.md for the model
+// these exercise.
 
 #include <library/work_contract/work_contract_group.h>
 
@@ -36,10 +37,10 @@ void test_concurrent_execution()
     static constexpr auto contract_count = 400ull;
     static constexpr auto target_per_contract = 500ull;
 
-    bcpp::work_contract_group<subtree> group({.capacity_ = contract_count});
+    bcpp::concurrency::work_contract_group<subtree> group({.capacity_ = contract_count});
 
     std::vector<std::atomic<std::uint64_t>> counts(contract_count);
-    std::vector<bcpp::work_contract> contracts;
+    std::vector<bcpp::concurrency::work_contract> contracts;
     contracts.reserve(contract_count);
 
     for (auto i = 0ull; i < contract_count; ++i)
@@ -48,9 +49,9 @@ void test_concurrent_execution()
                 [&counts, i]()
                 {
                     if (++counts[i] < target_per_contract)
-                        bcpp::this_contract::schedule();
+                        bcpp::concurrency::this_contract::schedule();
                 },
-                bcpp::work_contract::initial_state::scheduled));
+                bcpp::concurrency::work_contract::initial_state::scheduled));
         check(contracts.back().is_valid() || i >= contract_count, "contract created");
         if (!contracts.back().is_valid())
             break;
@@ -96,7 +97,7 @@ void test_slot_recycling()
 {
     std::cout << "slot recycling\n";
 
-    bcpp::work_contract_group group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group group({.capacity_ = 64});
     auto created = 0ull;
 
     for (auto round = 0ull; round < 1000ull; ++round)
@@ -120,10 +121,10 @@ void test_stale_handle()
 {
     std::cout << "stale handle safety\n";
 
-    bcpp::work_contract_group group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group group({.capacity_ = 64});
 
-    auto first = group.create_contract([](){ bcpp::this_contract::release(); });
-    std::vector<bcpp::work_contract> occupants;
+    auto first = group.create_contract([](){ bcpp::concurrency::this_contract::release(); });
+    std::vector<bcpp::concurrency::work_contract> occupants;
     occupants.reserve(group.capacity() - 1);
     for (auto index = 1ull; index < group.capacity(); ++index)
         occupants.push_back(group.create_contract([] {}));
@@ -157,9 +158,9 @@ void test_handle_outlives_group()
 {
     std::cout << "handle outliving group\n";
 
-    bcpp::work_contract contract;
+    bcpp::concurrency::work_contract contract;
     {
-        bcpp::work_contract_group group({.capacity_ = 64});
+        bcpp::concurrency::work_contract_group group({.capacity_ = 64});
         contract = group.create_contract([](){});
         check(contract.is_valid(), "valid while group alive");
     }
@@ -176,15 +177,16 @@ void test_exception_handler()
     std::cout << "exception handling\n";
 
     std::atomic<std::uint64_t> caught{0};
-    bcpp::work_contract_group group(
-            {.capacity_ = 64},
-            {.contractException_ = [&](auto, std::exception_ptr){ ++caught; }});
+    bcpp::concurrency::work_contract_group group({.capacity_ = 64});
 
-    auto contract = group.create_contract([](){ throw std::runtime_error("boom"); },
-            bcpp::work_contract::initial_state::scheduled);
+    auto contract = group.create_contract(
+            [](){ throw std::runtime_error("boom"); },
+            [] {},
+            [&](std::exception_ptr){++caught;},
+            bcpp::concurrency::work_contract::initial_state::scheduled);
     while (group.execute_next_contract())
         ;
-    check(caught.load() == 1, "group level exception handler invoked");
+    check(caught.load() == 1, "per-contract exception handler invoked");
 }
 
 
@@ -194,16 +196,14 @@ void test_release_handler()
     std::cout << "release handling\n";
 
     std::atomic<std::uint64_t> released{0};
-    bcpp::work_contract_group group(
-            {.capacity_ = 64},
-            {.contractReleased_ = [&](auto){ ++released; }});
+    bcpp::concurrency::work_contract_group group({.capacity_ = 64});
 
     {
-        auto contract = group.create_contract([](){});
+        auto contract = group.create_contract([](){}, [&]{++released;});
     }   // destructor releases
     while (group.execute_next_contract())
         ;
-    check(released.load() == 1, "group level release handler invoked on handle destruction");
+    check(released.load() == 1, "per-contract release handler invoked on handle destruction");
 }
 
 
@@ -212,7 +212,7 @@ void test_release_remains_valid_until_processed()
 {
     std::cout << "release remains valid until processed\n";
 
-    bcpp::work_contract_group group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group group({.capacity_ = 64});
     auto contract = group.create_contract([](){});
 
     check(contract.release(), "release request accepted");

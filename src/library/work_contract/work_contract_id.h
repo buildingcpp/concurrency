@@ -1,6 +1,6 @@
 #pragma once
 
-#include <include/signal_tree/signal_id.h>
+#include <library/signal_tree/signal_id.h>
 
 #include <compare>
 #include <cstdint>
@@ -8,7 +8,7 @@
 #include <limits>
 
 
-namespace bcpp
+namespace bcpp::concurrency
 {
 
     //==============================================================================
@@ -45,15 +45,15 @@ namespace bcpp
 
     }; // class work_contract_id
 
-} // namespace bcpp
+} // namespace bcpp::concurrency
 
 
 //==============================================================================
 template <>
-struct std::hash<bcpp::work_contract_id>
+struct std::hash<bcpp::concurrency::work_contract_id>
 {
-    std::size_t operator()(bcpp::work_contract_id id) const noexcept
+    std::size_t operator()(bcpp::concurrency::work_contract_id id) const noexcept
     {
-        return std::hash<bcpp::work_contract_id::value_type>{}(static_cast<bcpp::work_contract_id::value_type>(id));
+        return std::hash<bcpp::concurrency::work_contract_id::value_type>{}(static_cast<bcpp::concurrency::work_contract_id::value_type>(id));
     }
 };

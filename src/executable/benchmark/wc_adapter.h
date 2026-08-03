@@ -9,7 +9,7 @@
 #include <vector>
 
 
-namespace bcpp::benchmark
+namespace bcpp::concurrency::benchmark
 {
 
     template <std::size_t Subtree>
@@ -41,4 +41,4 @@ namespace bcpp::benchmark
         std::vector<work_contract>      handles_;
     };
 
-} // namespace bcpp::benchmark
+} // namespace bcpp::concurrency::benchmark

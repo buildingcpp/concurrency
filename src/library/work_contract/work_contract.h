@@ -11,7 +11,7 @@
 #include <utility>
 
 
-namespace bcpp
+namespace bcpp::concurrency
 {
 
     template <std::size_t, synchronization_mode> class work_contract_group;
@@ -109,11 +109,11 @@ namespace bcpp
 
     }; // class work_contract
 
-} // namespace bcpp
+} // namespace bcpp::concurrency
 
 
 //=============================================================================
-inline bcpp::work_contract::work_contract
+inline bcpp::concurrency::work_contract::work_contract
 (
     work_contract && other
 ) noexcept :
@@ -124,7 +124,7 @@ inline bcpp::work_contract::work_contract
 
 
 //=============================================================================
-inline auto bcpp::work_contract::operator =
+inline auto bcpp::concurrency::work_contract::operator =
 (
     work_contract && other
 ) noexcept -> work_contract &
@@ -142,7 +142,7 @@ inline auto bcpp::work_contract::operator =
 
 
 //=============================================================================
-inline bcpp::work_contract::~work_contract
+inline bcpp::concurrency::work_contract::~work_contract
 (
 )
 {
@@ -151,7 +151,7 @@ inline bcpp::work_contract::~work_contract
 
 
 //=============================================================================
-inline void bcpp::work_contract::schedule
+inline void bcpp::concurrency::work_contract::schedule
 (
     // the hot path.  the generation is passed through so that a handle which
     // refers to a slot that has since been recycled is silently ignored.
@@ -163,7 +163,7 @@ inline void bcpp::work_contract::schedule
 
 
 //=============================================================================
-inline bool bcpp::work_contract::release
+inline bool bcpp::concurrency::work_contract::release
 (
 ) noexcept
 {
@@ -174,7 +174,7 @@ inline bool bcpp::work_contract::release
 
 
 //=============================================================================
-inline void bcpp::work_contract::reset
+inline void bcpp::concurrency::work_contract::reset
 (
 ) noexcept
 {
@@ -187,7 +187,7 @@ inline void bcpp::work_contract::reset
 
 
 //=============================================================================
-inline bool bcpp::work_contract::is_valid
+inline bool bcpp::concurrency::work_contract::is_valid
 (
 ) const noexcept
 {
@@ -198,7 +198,7 @@ inline bool bcpp::work_contract::is_valid
 
 
 //=============================================================================
-inline bcpp::work_contract::operator bool
+inline bcpp::concurrency::work_contract::operator bool
 (
 ) const noexcept
 {

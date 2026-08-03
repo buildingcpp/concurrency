@@ -46,64 +46,64 @@ namespace
     concept can_create_contract = requires (Group & group, WorkFunction && workFunction)
     {
         {group.create_contract(std::forward<WorkFunction>(workFunction))}
-            -> std::same_as<bcpp::work_contract>;
+            -> std::same_as<bcpp::concurrency::work_contract>;
     };
 
     template <typename Group>
-    concept can_try_execute = requires (Group & group, bcpp::signal_id & hint)
+    concept can_try_execute = requires (Group & group, bcpp::concurrency::signal_id & hint)
     {
         {group.try_execute_next_contract()} -> std::same_as<bool>;
         {group.try_execute_next_contract(hint)} -> std::same_as<bool>;
     };
 
-    static_assert(std::is_default_constructible_v<bcpp::work_contract>);
-    static_assert(not std::is_copy_constructible_v<bcpp::work_contract>);
-    static_assert(not std::is_copy_assignable_v<bcpp::work_contract>);
-    static_assert(std::is_nothrow_move_constructible_v<bcpp::work_contract>);
-    static_assert(std::is_nothrow_move_assignable_v<bcpp::work_contract>);
-    static_assert(std::is_nothrow_destructible_v<bcpp::work_contract>);
+    static_assert(std::is_default_constructible_v<bcpp::concurrency::work_contract>);
+    static_assert(not std::is_copy_constructible_v<bcpp::concurrency::work_contract>);
+    static_assert(not std::is_copy_assignable_v<bcpp::concurrency::work_contract>);
+    static_assert(std::is_nothrow_move_constructible_v<bcpp::concurrency::work_contract>);
+    static_assert(std::is_nothrow_move_assignable_v<bcpp::concurrency::work_contract>);
+    static_assert(std::is_nothrow_destructible_v<bcpp::concurrency::work_contract>);
 
-    static_assert(not std::is_copy_constructible_v<bcpp::work_contract_group<>>);
-    static_assert(not std::is_move_constructible_v<bcpp::work_contract_group<>>);
+    static_assert(not std::is_copy_constructible_v<bcpp::concurrency::work_contract_group<>>);
+    static_assert(not std::is_move_constructible_v<bcpp::concurrency::work_contract_group<>>);
 
     static_assert(std::invocable<move_only_callable &>);
     static_assert(not std::copy_constructible<move_only_callable>);
-    static_assert(not can_create_contract<bcpp::work_contract_group<>, move_only_callable>);
-    static_assert(can_create_contract<bcpp::work_contract_group<>, throwing_callable>);
-    static_assert(not can_try_execute<bcpp::work_contract_group<>>);
-    static_assert(can_try_execute<bcpp::blocking_work_contract_group<>>);
+    static_assert(not can_create_contract<bcpp::concurrency::work_contract_group<>, move_only_callable>);
+    static_assert(can_create_contract<bcpp::concurrency::work_contract_group<>, throwing_callable>);
+    static_assert(not can_try_execute<bcpp::concurrency::work_contract_group<>>);
+    static_assert(can_try_execute<bcpp::concurrency::blocking_work_contract_group<>>);
 
-    static_assert(bcpp::work_contract_group<>::default_capacity == 512);
-    static_assert(bcpp::work_contract_group<64>::signals_per_subtree_v == 64);
-    static_assert(not bcpp::work_contract_group<>::blocking);
-    static_assert(bcpp::blocking_work_contract_group<>::blocking);
+    static_assert(bcpp::concurrency::work_contract_group<>::default_capacity == 512);
+    static_assert(bcpp::concurrency::work_contract_group<64>::signals_per_subtree_v == 64);
+    static_assert(not bcpp::concurrency::work_contract_group<>::blocking);
+    static_assert(bcpp::concurrency::blocking_work_contract_group<>::blocking);
     static_assert(std::is_same_v<
-            bcpp::blocking_work_contract_group<64>,
-            bcpp::work_contract_group<64, bcpp::synchronization_mode::blocking>>);
+            bcpp::concurrency::blocking_work_contract_group<64>,
+            bcpp::concurrency::work_contract_group<64, bcpp::synchronization_mode::blocking>>);
 
-    using deduced_group = decltype(bcpp::work_contract_group(
-            bcpp::work_contract_group_configuration{.capacity_ = 64}));
-    static_assert(std::is_same_v<deduced_group, bcpp::work_contract_group<>>);
+    using deduced_group = decltype(bcpp::concurrency::work_contract_group(
+            bcpp::concurrency::work_contract_group_configuration{.capacity_ = 64}));
+    static_assert(std::is_same_v<deduced_group, bcpp::concurrency::work_contract_group<>>);
 }
 
 
 //=============================================================================
 void test_ids(wc_test::suite & suite)
 {
-    bcpp::work_contract_id invalid;
-    bcpp::work_contract_id zero{0};
-    bcpp::work_contract_id seven{7};
-    bcpp::work_contract_id fromSignal{bcpp::signal_id{7}};
+    bcpp::concurrency::work_contract_id invalid;
+    bcpp::concurrency::work_contract_id zero{0};
+    bcpp::concurrency::work_contract_id seven{7};
+    bcpp::concurrency::work_contract_id fromSignal{bcpp::concurrency::signal_id{7}};
 
     suite.check(not invalid.valid(), "a default id is invalid");
-    suite.check(invalid == bcpp::work_contract_id::invalid(), "invalid() returns the sentinel id");
+    suite.check(invalid == bcpp::concurrency::work_contract_id::invalid(), "invalid() returns the sentinel id");
     suite.check(zero.valid(), "id zero is valid");
     suite.check(static_cast<std::uint64_t>(seven) == 7, "an id exposes its numeric value explicitly");
     suite.check(fromSignal == seven, "signal_id conversion preserves the value");
-    suite.check(seven.to_signal_id() == bcpp::signal_id{7}, "to_signal_id preserves the value");
+    suite.check(seven.to_signal_id() == bcpp::concurrency::signal_id{7}, "to_signal_id preserves the value");
     suite.check(zero < seven, "ids are ordered");
 
-    std::unordered_set<bcpp::work_contract_id> ids{zero, seven, fromSignal};
+    std::unordered_set<bcpp::concurrency::work_contract_id> ids{zero, seven, fromSignal};
     suite.check(ids.size() == 2, "std::hash is consistent with id equality");
 }
 
@@ -111,13 +111,13 @@ void test_ids(wc_test::suite & suite)
 //=============================================================================
 void test_default_handle(wc_test::suite & suite)
 {
-    bcpp::work_contract contract;
+    bcpp::concurrency::work_contract contract;
 
     suite.check(not contract.is_valid(), "a default handle is invalid");
     suite.check(not static_cast<bool>(contract), "the bool conversion mirrors is_valid()");
     suite.check(not contract.release(), "releasing a default handle is a safe no-op");
 
-    bcpp::work_contract moved{std::move(contract)};
+    bcpp::concurrency::work_contract moved{std::move(contract)};
     suite.check(not moved.is_valid() && not contract.is_valid(), "moving a default handle keeps both handles invalid");
 }
 
@@ -125,11 +125,11 @@ void test_default_handle(wc_test::suite & suite)
 //=============================================================================
 void test_capacity(wc_test::suite & suite)
 {
-    bcpp::work_contract_group defaultGroup;
-    bcpp::work_contract_group<64> zeroRequested({.capacity_ = 0});
-    bcpp::work_contract_group<64> oneRequested({.capacity_ = 1});
-    bcpp::work_contract_group<64> exactRequested({.capacity_ = 64});
-    bcpp::work_contract_group<64> roundedRequested({.capacity_ = 65});
+    bcpp::concurrency::work_contract_group defaultGroup;
+    bcpp::concurrency::work_contract_group<64> zeroRequested({.capacity_ = 0});
+    bcpp::concurrency::work_contract_group<64> oneRequested({.capacity_ = 1});
+    bcpp::concurrency::work_contract_group<64> exactRequested({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group<64> roundedRequested({.capacity_ = 65});
 
     suite.check(defaultGroup.capacity() == 512, "the default group has 512 slots");
     suite.check(zeroRequested.capacity() == 64, "zero capacity still allocates one subtree");
@@ -142,8 +142,8 @@ void test_capacity(wc_test::suite & suite)
 //=============================================================================
 void test_creation_and_exhaustion(wc_test::suite & suite)
 {
-    bcpp::work_contract_group<64> group({.capacity_ = 65});
-    std::vector<bcpp::work_contract> contracts;
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = 65});
+    std::vector<bcpp::concurrency::work_contract> contracts;
     bool allWithinCapacityValid = true;
     contracts.reserve(group.capacity());
 
@@ -172,7 +172,7 @@ void test_creation_and_exhaustion(wc_test::suite & suite)
 //=============================================================================
 void test_creation_exception_safety(wc_test::suite & suite)
 {
-    bcpp::work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = 64});
     bool exceptionObserved{};
     try
     {
@@ -183,7 +183,7 @@ void test_creation_exception_safety(wc_test::suite & suite)
         exceptionObserved = true;
     }
 
-    std::vector<bcpp::work_contract> contracts;
+    std::vector<bcpp::concurrency::work_contract> contracts;
     contracts.reserve(group.capacity());
     for (auto index = 0ull; index < group.capacity(); ++index)
     {
@@ -201,7 +201,7 @@ void test_creation_exception_safety(wc_test::suite & suite)
 //=============================================================================
 void test_initial_state_and_empty_execution(wc_test::suite & suite)
 {
-    bcpp::work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = 64});
     std::uint64_t unscheduledRuns{};
     std::uint64_t scheduledRuns{};
 
@@ -212,7 +212,7 @@ void test_initial_state_and_empty_execution(wc_test::suite & suite)
 
     auto scheduled = group.create_contract(
             [&] { ++scheduledRuns; },
-            bcpp::work_contract::initial_state::scheduled);
+            bcpp::concurrency::work_contract::initial_state::scheduled);
     suite.check(group.execute_next_contract(), "a scheduled initial state is immediately executable");
     suite.check(scheduledRuns == 1, "the initially scheduled work ran once");
     suite.check(not group.execute_next_contract(), "the group reports empty after its signal is consumed");

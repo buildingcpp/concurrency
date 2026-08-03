@@ -19,7 +19,7 @@ int main
     char const ** argv
 )
 {
-    using namespace bcpp::benchmark;
+    using namespace bcpp::concurrency::benchmark;
 
     auto cfg = parse_config(argc, argv);
     if (cfg.help)

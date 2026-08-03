@@ -5,7 +5,7 @@
 #include "./work_contract_shared_state.h"
 #include "./work_contract_this.h"
 
-#include <include/signal_tree/densest_child_selector.h>
+#include <library/signal_tree/densest_child_selector.h>
 #include <include/non_copyable.h>
 #include <include/non_movable.h>
 
@@ -22,7 +22,7 @@
 #include <vector>
 
 
-namespace bcpp
+namespace bcpp::concurrency
 {
 
     //==============================================================================
@@ -39,19 +39,10 @@ namespace bcpp
 
 
     //==============================================================================
-    // group wide handlers.  contracts themselves carry only their work function.
-    struct work_contract_group_event_handlers
-    {
-        std::function<void(work_contract_id)>                       contractReleased_;
-        std::function<void(work_contract_id, std::exception_ptr)>   contractException_;
-    };
-
-
-    //==============================================================================
     // Lock-free work-contract group backed by signal_tree.  The concurrency model
     // -- thread-safety of each call, the state-word invariants, the ABA/generation
     // design, and the one memory-ordering dependency on signal_tree -- is written
-    // up in CONCURRENCY.md at the repo root.  The load-bearing methods are
+    // up in this library's CONCURRENCY.md.  The load-bearing methods are
     // schedule, release, process_contract and erase_contract below.
     template <std::size_t signals_per_subtree = 512, synchronization_mode Mode = synchronization_mode::non_blocking>
     class work_contract_group :
@@ -65,12 +56,9 @@ namespace bcpp
         static auto constexpr blocking = (Mode == synchronization_mode::blocking);
 
         using configuration = work_contract_group_configuration;
-        using event_handlers = work_contract_group_event_handlers;
-
         work_contract_group
         (
-            configuration const & = {},
-            event_handlers const & = {}
+            configuration const & = {}
         );
 
         ~work_contract_group();
@@ -84,6 +72,39 @@ namespace bcpp
         [[nodiscard]] work_contract create_contract
         (
             WorkFunction &&,
+            work_contract::initial_state = work_contract::initial_state::unscheduled
+        );
+
+        template <typename WorkFunction, typename ReleaseFunction>
+        requires
+        (
+            std::invocable<std::decay_t<WorkFunction> &>
+            && std::copy_constructible<std::decay_t<WorkFunction>>
+            && std::invocable<std::decay_t<ReleaseFunction> &>
+            && std::copy_constructible<std::decay_t<ReleaseFunction>>
+        )
+        [[nodiscard]] work_contract create_contract
+        (
+            WorkFunction &&,
+            ReleaseFunction &&,
+            work_contract::initial_state = work_contract::initial_state::unscheduled
+        );
+
+        template <typename WorkFunction, typename ReleaseFunction, typename ExceptionFunction>
+        requires
+        (
+            std::invocable<std::decay_t<WorkFunction> &>
+            && std::copy_constructible<std::decay_t<WorkFunction>>
+            && std::invocable<std::decay_t<ReleaseFunction> &>
+            && std::copy_constructible<std::decay_t<ReleaseFunction>>
+            && std::invocable<std::decay_t<ExceptionFunction> &, std::exception_ptr>
+            && std::copy_constructible<std::decay_t<ExceptionFunction>>
+        )
+        [[nodiscard]] work_contract create_contract
+        (
+            WorkFunction &&,
+            ReleaseFunction &&,
+            ExceptionFunction &&,
             work_contract::initial_state = work_contract::initial_state::unscheduled
         );
 
@@ -201,7 +222,9 @@ namespace bcpp
 
         std::vector<std::function<void()>>              work_;
 
-        event_handlers                                  eventHandlers_;
+        std::vector<std::function<void()>>              release_;
+
+        std::vector<std::function<void(std::exception_ptr)>> exception_;
 
         std::atomic<bool>                               stopped_{false};
 
@@ -218,32 +241,31 @@ namespace bcpp
 
     work_contract_group() -> work_contract_group<>;
     work_contract_group(work_contract_group_configuration const &) -> work_contract_group<>;
-    work_contract_group(work_contract_group_configuration const &, work_contract_group_event_handlers const &) -> work_contract_group<>;
 
 
     template <std::size_t signals_per_subtree = 512>
     using blocking_work_contract_group = work_contract_group<signals_per_subtree, synchronization_mode::blocking>;
 
-} // namespace bcpp
+} // namespace bcpp::concurrency
 
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline bcpp::work_contract_group<signals_per_subtree, Mode>::work_contract_group
+inline bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::work_contract_group
 (
-    configuration const & config,
-    event_handlers const & eventHandlers
+    configuration const & config
 ) :
     sharedState_(new shared_state(config.capacity_)),
     work_(sharedState_->contracts_.size()),
-    eventHandlers_(eventHandlers)
+    release_(sharedState_->contracts_.size()),
+    exception_(sharedState_->contracts_.size())
 {
 }
 
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline bcpp::work_contract_group<signals_per_subtree, Mode>::~work_contract_group
+inline bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::~work_contract_group
 (
 )
 {
@@ -253,7 +275,7 @@ inline bcpp::work_contract_group<signals_per_subtree, Mode>::~work_contract_grou
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::stop
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::stop
 (
 ) noexcept
 {
@@ -274,9 +296,66 @@ requires
     std::invocable<std::decay_t<WorkFunction> &>
     && std::copy_constructible<std::decay_t<WorkFunction>>
 )
-inline auto bcpp::work_contract_group<signals_per_subtree, Mode>::create_contract
+inline auto bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::create_contract
 (
     WorkFunction && workFunction,
+    work_contract::initial_state initialState
+) -> work_contract
+{
+    return create_contract
+    (
+        std::forward<WorkFunction>(workFunction),
+        [] {},
+        [](std::exception_ptr exception) {std::rethrow_exception(exception);},
+        initialState
+    );
+}
+
+
+//=============================================================================
+template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
+template <typename WorkFunction, typename ReleaseFunction>
+requires
+(
+    std::invocable<std::decay_t<WorkFunction> &>
+    && std::copy_constructible<std::decay_t<WorkFunction>>
+    && std::invocable<std::decay_t<ReleaseFunction> &>
+    && std::copy_constructible<std::decay_t<ReleaseFunction>>
+)
+inline auto bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::create_contract
+(
+    WorkFunction && workFunction,
+    ReleaseFunction && releaseFunction,
+    work_contract::initial_state initialState
+) -> work_contract
+{
+    return create_contract
+    (
+        std::forward<WorkFunction>(workFunction),
+        std::forward<ReleaseFunction>(releaseFunction),
+        [](std::exception_ptr exception) {std::rethrow_exception(exception);},
+        initialState
+    );
+}
+
+
+//=============================================================================
+template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
+template <typename WorkFunction, typename ReleaseFunction, typename ExceptionFunction>
+requires
+(
+    std::invocable<std::decay_t<WorkFunction> &>
+    && std::copy_constructible<std::decay_t<WorkFunction>>
+    && std::invocable<std::decay_t<ReleaseFunction> &>
+    && std::copy_constructible<std::decay_t<ReleaseFunction>>
+    && std::invocable<std::decay_t<ExceptionFunction> &, std::exception_ptr>
+    && std::copy_constructible<std::decay_t<ExceptionFunction>>
+)
+inline auto bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::create_contract
+(
+    WorkFunction && workFunction,
+    ReleaseFunction && releaseFunction,
+    ExceptionFunction && exceptionFunction,
     work_contract::initial_state initialState
 ) -> work_contract
 {
@@ -291,6 +370,8 @@ inline auto bcpp::work_contract_group<signals_per_subtree, Mode>::create_contrac
     auto generation = contract.state_.load(std::memory_order_acquire) & generation_mask;
     contract.state_.store(generation, std::memory_order_relaxed);
     work_[static_cast<std::uint64_t>(contractId)] = std::forward<WorkFunction>(workFunction);
+    release_[static_cast<std::uint64_t>(contractId)] = std::forward<ReleaseFunction>(releaseFunction);
+    exception_[static_cast<std::uint64_t>(contractId)] = std::forward<ExceptionFunction>(exceptionFunction);
     autoReturnAvailableSignal.commit();
 
     return work_contract(sharedState_.get(), contractId, generation, initialState);
@@ -299,7 +380,7 @@ inline auto bcpp::work_contract_group<signals_per_subtree, Mode>::create_contrac
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::execute_next_contract
+inline bool bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::execute_next_contract
 (
 )
 {
@@ -309,7 +390,7 @@ inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::execute_next_c
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::execute_next_contract
+inline bool bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::execute_next_contract
 (
     // select a set signal from the signal set (which clears it) and then process
     // whatever the flags say is pending on the contract that it identifies.
@@ -343,7 +424,7 @@ inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::execute_next_c
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::try_execute_next_contract
+inline bool bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::try_execute_next_contract
 (
 ) requires (blocking)
 {
@@ -353,7 +434,7 @@ inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::try_execute_ne
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::try_execute_next_contract
+inline bool bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::try_execute_next_contract
 (
     signal_id & hint
 ) requires (blocking)
@@ -378,7 +459,7 @@ inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::try_execute_ne
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
 template <typename Rep, typename Period>
-inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::execute_next_contract
+inline bool bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::execute_next_contract
 (
     std::chrono::duration<Rep, Period> timeout
 ) requires (blocking)
@@ -390,7 +471,7 @@ inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::execute_next_c
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
 template <typename Rep, typename Period>
-inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::execute_next_contract
+inline bool bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::execute_next_contract
 (
     signal_id & hint,
     std::chrono::duration<Rep, Period> timeout
@@ -409,7 +490,7 @@ inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::execute_next_c
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::set_contract_signal
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::set_contract_signal
 (
     work_contract_id contractId
 ) noexcept
@@ -420,7 +501,7 @@ inline void bcpp::work_contract_group<signals_per_subtree, Mode>::set_contract_s
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::schedule
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::schedule
 (
     // generation-validated schedule.  set the schedule flag iff the slot still
     // carries the caller's generation; if it was recycled the CAS never commits.
@@ -435,7 +516,7 @@ inline void bcpp::work_contract_group<signals_per_subtree, Mode>::schedule
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::schedule
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::schedule
 (
     // owner-path schedule (from within an executing contract): the generation is
     // whatever the slot holds right now and cannot change under us.
@@ -450,7 +531,7 @@ inline void bcpp::work_contract_group<signals_per_subtree, Mode>::schedule
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::release
+inline bool bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::release
 (
     // generation-validated release.  returns false (and does nothing) if the slot
     // has already been recycled -- i.e. the handle is stale.  otherwise sets the
@@ -465,7 +546,7 @@ inline bool bcpp::work_contract_group<signals_per_subtree, Mode>::release
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::release
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::release
 (
     // owner-path release (from within an executing contract).
     work_contract_id contractId
@@ -479,7 +560,7 @@ inline void bcpp::work_contract_group<signals_per_subtree, Mode>::release
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::process_contract
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::process_contract
 (
     work_contract_id contractId
 )
@@ -525,18 +606,19 @@ inline void bcpp::work_contract_group<signals_per_subtree, Mode>::process_contra
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::process_release
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::process_release
 (
     // notify, then erase.  the auto class ensures erasure even if the handler throws.
     work_contract_id contractId
 )
 {
     auto_erase_contract autoEraseContract(contractId, *this);
-    if (eventHandlers_.contractReleased_)
+    auto & releaseFunction = release_[static_cast<std::uint64_t>(contractId)];
+    if (releaseFunction)
     {
         try
         {
-            eventHandlers_.contractReleased_(contractId);
+            releaseFunction();
         }
         catch (...)
         {
@@ -548,14 +630,15 @@ inline void bcpp::work_contract_group<signals_per_subtree, Mode>::process_releas
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::process_exception
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::process_exception
 (
     work_contract_id contractId,
     std::exception_ptr exception
 )
 {
-    if (eventHandlers_.contractException_)
-        eventHandlers_.contractException_(contractId, exception);
+    auto & exceptionFunction = exception_[static_cast<std::uint64_t>(contractId)];
+    if (exceptionFunction)
+        exceptionFunction(exception);
     else
         std::rethrow_exception(exception);
 }
@@ -563,7 +646,7 @@ inline void bcpp::work_contract_group<signals_per_subtree, Mode>::process_except
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::clear_execute_flag
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::clear_execute_flag
 (
     work_contract_id contractId
 ) noexcept
@@ -580,7 +663,7 @@ inline void bcpp::work_contract_group<signals_per_subtree, Mode>::clear_execute_
 
 //=============================================================================
 template <std::size_t signals_per_subtree, bcpp::synchronization_mode Mode>
-inline void bcpp::work_contract_group<signals_per_subtree, Mode>::erase_contract
+inline void bcpp::concurrency::work_contract_group<signals_per_subtree, Mode>::erase_contract
 (
     // clean up the contract and return its slot to the available set.  bumping the
     // generation is what invalidates any work_contract still referring to the slot.
@@ -589,6 +672,8 @@ inline void bcpp::work_contract_group<signals_per_subtree, Mode>::erase_contract
 {
     auto & contract = sharedState_->contracts_[static_cast<std::uint64_t>(contractId)];
     work_[static_cast<std::uint64_t>(contractId)] = nullptr;
+    release_[static_cast<std::uint64_t>(contractId)] = nullptr;
+    exception_[static_cast<std::uint64_t>(contractId)] = nullptr;
     auto generation = (contract.state_.load(std::memory_order_relaxed) & generation_mask) + generation_increment;
     contract.state_.store(generation, std::memory_order_release);
     sharedState_->available_.set(contractId.to_signal_id());

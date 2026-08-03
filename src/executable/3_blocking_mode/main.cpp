@@ -15,7 +15,7 @@ int main()
 
     // a blocking group parks idle workers rather than spinning; scheduling work
     // wakes them.  a non-blocking group would instead return false and spin.
-    bcpp::blocking_work_contract_group<> workContractGroup({.capacity_ = 256});
+    bcpp::concurrency::blocking_work_contract_group<> workContractGroup({.capacity_ = 256});
 
     std::atomic<int>  completed{0};
     std::atomic<bool> running{true};
@@ -27,7 +27,7 @@ int main()
         workers.emplace_back(
                 [&]
                 {
-                    bcpp::signal_id hint{};
+                    bcpp::concurrency::signal_id hint{};
                     while (running.load(std::memory_order_acquire))
                         workContractGroup.execute_next_contract(hint, 50ms);
                 });
@@ -35,7 +35,7 @@ int main()
     std::this_thread::sleep_for(50ms);
     std::cout << "4 workers parked (idle, no cpu)\n";
 
-    std::vector<bcpp::work_contract> contracts;
+    std::vector<bcpp::concurrency::work_contract> contracts;
     contracts.reserve(8);
     for (auto i = 0; i < 8; ++i)
         contracts.push_back(workContractGroup.create_contract(

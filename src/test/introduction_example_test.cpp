@@ -1,4 +1,5 @@
-// Executable form of the first complete example in INTRODUCTION.md.
+// Executable form of the first complete example in
+// ../library/work_contract/INTRODUCTION.md.
 // Keeping it in CTest prevents the adoption path from drifting out of sync.
 
 #include <library/work_contract.h>
@@ -9,7 +10,7 @@
 
 int main()
 {
-    bcpp::work_contract_group group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group group({.capacity_ = 64});
     std::uint64_t invocation = 0;
 
     auto heartbeat = group.create_contract(
@@ -18,11 +19,11 @@ int main()
             ++invocation;
 
             if (invocation < 3)
-                bcpp::this_contract::schedule();
+                bcpp::concurrency::this_contract::schedule();
             else
-                bcpp::this_contract::release();
+                bcpp::concurrency::this_contract::release();
         },
-        bcpp::work_contract::initial_state::scheduled);
+        bcpp::concurrency::work_contract::initial_state::scheduled);
 
     std::uint64_t executorActions{};
     while (heartbeat.is_valid() && executorActions < 10)

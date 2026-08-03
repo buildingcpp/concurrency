@@ -18,15 +18,15 @@ using namespace std::chrono_literals;
 //=============================================================================
 void test_concurrent_creation(wc_test::suite & suite)
 {
-    bcpp::work_contract_group<64> group({.capacity_ = 512});
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = 512});
     std::atomic<std::uint64_t> runs{};
     std::mutex handlesMutex;
-    std::vector<bcpp::work_contract> handles;
+    std::vector<bcpp::concurrency::work_contract> handles;
     handles.reserve(group.capacity());
 
     auto createUntilFull = [&]
     {
-        std::vector<bcpp::work_contract> local;
+        std::vector<bcpp::concurrency::work_contract> local;
         for (;;)
         {
             auto contract = group.create_contract(
@@ -59,7 +59,7 @@ void test_concurrent_creation(wc_test::suite & suite)
 //=============================================================================
 void test_concurrent_schedule_coalescing(wc_test::suite & suite)
 {
-    bcpp::work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = 64});
     std::atomic<std::uint64_t> runs{};
     auto contract = group.create_contract([&] { runs.fetch_add(1, std::memory_order_relaxed); });
 
@@ -82,7 +82,7 @@ void test_concurrent_schedule_coalescing(wc_test::suite & suite)
 //=============================================================================
 void test_schedule_while_executing(wc_test::suite & suite)
 {
-    bcpp::work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = 64});
     std::atomic<std::uint64_t> runs{};
     std::atomic<bool> entered{};
     std::atomic<bool> proceed{};
@@ -97,7 +97,7 @@ void test_schedule_while_executing(wc_test::suite & suite)
                         std::this_thread::yield();
                 }
             },
-            bcpp::work_contract::initial_state::scheduled);
+            bcpp::concurrency::work_contract::initial_state::scheduled);
 
     std::thread executor([&] { group.execute_next_contract(); });
     auto const started = wc_test::eventually(
@@ -133,9 +133,7 @@ void test_release_while_executing(wc_test::suite & suite)
     std::atomic<std::uint64_t> released{};
     std::atomic<bool> entered{};
     std::atomic<bool> proceed{};
-    bcpp::work_contract_group<64> group(
-            {.capacity_ = 64},
-            {.contractReleased_ = [&](auto) { released.fetch_add(1, std::memory_order_relaxed); }});
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = 64});
 
     auto contract = group.create_contract(
             [&]
@@ -145,7 +143,8 @@ void test_release_while_executing(wc_test::suite & suite)
                 while (not proceed.load(std::memory_order_acquire))
                     std::this_thread::yield();
             },
-            bcpp::work_contract::initial_state::scheduled);
+            [&] { released.fetch_add(1, std::memory_order_relaxed); },
+            bcpp::concurrency::work_contract::initial_state::scheduled);
 
     std::thread executor([&] { group.execute_next_contract(); });
     auto const started = wc_test::eventually(
@@ -173,15 +172,15 @@ void test_concurrent_release_processing(wc_test::suite & suite)
     static constexpr auto contractCount = 512;
     std::atomic<int> released{};
     std::atomic<bool> running{true};
-    bcpp::work_contract_group<64> group(
-            {.capacity_ = contractCount},
-            {.contractReleased_ = [&](auto) { released.fetch_add(1, std::memory_order_relaxed); }});
-    std::vector<bcpp::work_contract> contracts;
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = contractCount});
+    std::vector<bcpp::concurrency::work_contract> contracts;
     std::vector<std::thread> workers;
     contracts.reserve(contractCount);
 
     for (auto index = 0; index < contractCount; ++index)
-        contracts.push_back(group.create_contract([] {}));
+        contracts.push_back(group.create_contract(
+                [] {},
+                [&] { released.fetch_add(1, std::memory_order_relaxed); }));
 
     for (auto index = 0; index < 8; ++index)
         workers.emplace_back(
@@ -213,8 +212,8 @@ void test_concurrent_release_processing(wc_test::suite & suite)
 //=============================================================================
 void test_group_isolation(wc_test::suite & suite)
 {
-    bcpp::work_contract_group<64> first({.capacity_ = 64});
-    bcpp::work_contract_group<64> second({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group<64> first({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group<64> second({.capacity_ = 64});
     std::uint64_t firstRuns{};
     std::uint64_t secondRuns{};
 
@@ -231,12 +230,12 @@ void test_group_isolation(wc_test::suite & suite)
 //=============================================================================
 void test_thread_local_context(wc_test::suite & suite)
 {
-    bcpp::work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = 64});
     std::atomic<int> entered{};
     std::atomic<bool> proceed{};
     std::atomic<bool> contextsCorrect{true};
-    std::array<bcpp::work_contract_id, 2> observedIds;
-    std::vector<bcpp::work_contract> contracts;
+    std::array<bcpp::concurrency::work_contract_id, 2> observedIds;
+    std::vector<bcpp::concurrency::work_contract> contracts;
     contracts.reserve(2);
 
     for (auto index = 0; index < 2; ++index)
@@ -244,14 +243,14 @@ void test_thread_local_context(wc_test::suite & suite)
         contracts.push_back(group.create_contract(
                 [&, index]
                 {
-                    if (not bcpp::this_contract::is_executing())
+                    if (not bcpp::concurrency::this_contract::is_executing())
                         contextsCorrect.store(false, std::memory_order_relaxed);
-                    observedIds[index] = bcpp::this_contract::get_id();
+                    observedIds[index] = bcpp::concurrency::this_contract::get_id();
                     entered.fetch_add(1, std::memory_order_release);
                     while (not proceed.load(std::memory_order_acquire))
                         std::this_thread::yield();
                 },
-                bcpp::work_contract::initial_state::scheduled));
+                bcpp::concurrency::work_contract::initial_state::scheduled));
     }
 
     std::thread first([&] { group.execute_next_contract(); });
@@ -265,18 +264,18 @@ void test_thread_local_context(wc_test::suite & suite)
     suite.check(bothEntered, "two contracts can execute concurrently");
     suite.check(contextsCorrect.load(std::memory_order_relaxed), "each worker sees its own this_contract context");
     suite.check(observedIds[0].valid() && observedIds[1].valid() && observedIds[0] != observedIds[1], "concurrent contracts have distinct internal execution ids");
-    suite.check(not bcpp::this_contract::is_executing(), "the caller thread has no leaked execution context");
+    suite.check(not bcpp::concurrency::this_contract::is_executing(), "the caller thread has no leaked execution context");
 }
 
 
 //=============================================================================
 void test_explicit_hints(wc_test::suite & suite)
 {
-    bcpp::work_contract_group<64> group({.capacity_ = 128});
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = 128});
     std::uint64_t runs{};
-    auto first = group.create_contract([&] { ++runs; }, bcpp::work_contract::initial_state::scheduled);
-    auto second = group.create_contract([&] { ++runs; }, bcpp::work_contract::initial_state::scheduled);
-    bcpp::signal_id hint{127};
+    auto first = group.create_contract([&] { ++runs; }, bcpp::concurrency::work_contract::initial_state::scheduled);
+    auto second = group.create_contract([&] { ++runs; }, bcpp::concurrency::work_contract::initial_state::scheduled);
+    bcpp::concurrency::signal_id hint{127};
 
     suite.check(group.execute_next_contract(hint), "the explicit-hint overload selects pending work");
     suite.check(group.execute_next_contract(hint), "the updated hint can select another contract");

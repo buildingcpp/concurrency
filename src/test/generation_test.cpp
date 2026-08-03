@@ -4,7 +4,7 @@
 // whose expected value carries the generation, so a handle whose slot has been
 // recycled fails the CAS instead of touching the new occupant (no ABA), and the
 // worker-owned flag transitions must preserve the generation field intact.
-// See ../../CONCURRENCY.md for the invariants these exercise.
+// See ../library/work_contract/CONCURRENCY.md for the invariants these exercise.
 
 #include <library/work_contract/work_contract_group.h>
 
@@ -36,7 +36,7 @@ void test_generation_preserved_across_cycles()
     std::cout << "generation preserved across many flag cycles\n";
 
     static constexpr auto target = 500'000ull;
-    bcpp::work_contract_group group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group group({.capacity_ = 64});
 
     std::uint64_t runs = 0;
     bool stayedValidMidRun = true;
@@ -45,9 +45,9 @@ void test_generation_preserved_across_cycles()
             [&]()
             {
                 if (++runs < target)
-                    bcpp::this_contract::schedule();
+                    bcpp::concurrency::this_contract::schedule();
             },
-            bcpp::work_contract::initial_state::scheduled);
+            bcpp::concurrency::work_contract::initial_state::scheduled);
 
     while (group.execute_next_contract())
     {
@@ -70,7 +70,7 @@ void test_stale_handle_cannot_touch_recycled_slot()
 {
     std::cout << "stale (self-released) handle cannot touch the recycled slot\n";
 
-    bcpp::work_contract_group group({.capacity_ = 64});
+    bcpp::concurrency::work_contract_group group({.capacity_ = 64});
 
     std::uint64_t aRuns = 0;
     // A releases itself the first time it runs
@@ -78,13 +78,13 @@ void test_stale_handle_cannot_touch_recycled_slot()
             [&]()
             {
                 ++aRuns;
-                bcpp::this_contract::release();
+                bcpp::concurrency::this_contract::release();
             },
-            bcpp::work_contract::initial_state::scheduled);
+            bcpp::concurrency::work_contract::initial_state::scheduled);
 
     // Fill every other slot so the next creation after A's release must reuse
     // A's slot, without exposing slot identity through the public handle.
-    std::vector<bcpp::work_contract> occupants;
+    std::vector<bcpp::concurrency::work_contract> occupants;
     occupants.reserve(group.capacity() - 1);
     for (auto index = 1ull; index < group.capacity(); ++index)
         occupants.push_back(group.create_contract([] {}));
@@ -143,14 +143,14 @@ void test_concurrent_aba_hammer()
     static constexpr auto capacity  = 64ull;        // tiny pool -> heavy collision
     static constexpr auto N         = 500'000ull;   // one-shot contracts to produce
 
-    bcpp::work_contract_group<64> group({.capacity_ = capacity});
+    bcpp::concurrency::work_contract_group<64> group({.capacity_ = capacity});
 
     std::atomic<std::uint64_t> actual{0};
     std::atomic<std::uint64_t> nextIndex{0};        // claims a unique stash slot < N
     std::atomic<std::uint64_t> ghostHits{0};
     std::atomic<bool> stopWorkers{false};
 
-    std::vector<bcpp::work_contract> ghosts(N);
+    std::vector<bcpp::concurrency::work_contract> ghosts(N);
     std::vector<std::atomic<bool>> ready(N);
     for (auto & r : ready)
         r.store(false, std::memory_order_relaxed);
@@ -172,14 +172,14 @@ void test_concurrent_aba_hammer()
             auto i = nextIndex.fetch_add(1, std::memory_order_relaxed);
             if (i >= N)
                 return;
-            bcpp::work_contract contract;
+            bcpp::concurrency::work_contract contract;
             do
             {
                 contract = group.create_contract(
                         [&]()
                         {
                             actual.fetch_add(1, std::memory_order_relaxed);
-                            bcpp::this_contract::release();   // run once, then recycle
+                            bcpp::concurrency::this_contract::release();   // run once, then recycle
                         });
                 if (not contract.is_valid())
                     group.execute_next_contract();            // pool full: help drain

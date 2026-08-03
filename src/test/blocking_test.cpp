@@ -15,7 +15,7 @@ using namespace std::chrono_literals;
 //=============================================================================
 void test_indefinite_wait_for_work(wc_test::suite & suite)
 {
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 64});
     std::atomic<bool> entered{};
     std::atomic<bool> returned{};
     std::uint64_t runs{};
@@ -51,7 +51,7 @@ void test_indefinite_wait_for_work(wc_test::suite & suite)
 //=============================================================================
 void test_stop_wakes_indefinite_wait(wc_test::suite & suite)
 {
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 64});
     std::atomic<bool> entered{};
     std::atomic<bool> returned{};
     bool selected{};
@@ -83,7 +83,7 @@ void test_stop_wakes_indefinite_wait(wc_test::suite & suite)
 //=============================================================================
 void test_timeout(wc_test::suite & suite)
 {
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 64});
 
     auto const before = std::chrono::steady_clock::now();
     auto const selected = group.execute_next_contract(30ms);
@@ -98,7 +98,7 @@ void test_timeout(wc_test::suite & suite)
 //=============================================================================
 void test_zero_timeout_is_try(wc_test::suite & suite)
 {
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 64});
     std::uint64_t runs{};
     auto contract = group.create_contract([&] { ++runs; });
 
@@ -109,7 +109,7 @@ void test_zero_timeout_is_try(wc_test::suite & suite)
     suite.check(group.execute_next_contract(0ns),
             "a zero timeout has the same semantics as try");
 
-    bcpp::signal_id hint{63};
+    bcpp::concurrency::signal_id hint{63};
     contract.schedule();
     suite.check(group.try_execute_next_contract(hint),
             "the explicit-hint try executes immediately available work");
@@ -120,11 +120,11 @@ void test_zero_timeout_is_try(wc_test::suite & suite)
 //=============================================================================
 void test_pending_work_does_not_wait(wc_test::suite & suite)
 {
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 64});
     std::uint64_t runs{};
     auto contract = group.create_contract(
             [&] { ++runs; },
-            bcpp::work_contract::initial_state::scheduled);
+            bcpp::concurrency::work_contract::initial_state::scheduled);
 
     auto const before = std::chrono::steady_clock::now();
     auto const selected = group.execute_next_contract(2s);
@@ -139,7 +139,7 @@ void test_pending_work_does_not_wait(wc_test::suite & suite)
 //=============================================================================
 void test_schedule_wakes_waiter(wc_test::suite & suite)
 {
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 64});
     std::atomic<std::uint64_t> runs{};
     std::atomic<bool> waiting{};
     bool selected{};
@@ -166,12 +166,12 @@ void test_schedule_wakes_waiter(wc_test::suite & suite)
 //=============================================================================
 void test_explicit_hint_timeout_overload(wc_test::suite & suite)
 {
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = 128});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 128});
     std::uint64_t runs{};
     auto contract = group.create_contract(
             [&] { ++runs; },
-            bcpp::work_contract::initial_state::scheduled);
-    bcpp::signal_id hint{127};
+            bcpp::concurrency::work_contract::initial_state::scheduled);
+    bcpp::concurrency::signal_id hint{127};
 
     suite.check(group.execute_next_contract(hint, 1s), "the blocking hint+timeout overload selects work");
     suite.check(runs == 1, "hinted blocking execution invokes the callback");
@@ -183,7 +183,7 @@ void test_explicit_hint_timeout_overload(wc_test::suite & suite)
 //=============================================================================
 void test_stop_wakes_all_waiters(wc_test::suite & suite)
 {
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 64});
     static constexpr auto workerCount = 6;
     std::atomic<int> entered{};
     std::atomic<int> returned{};
@@ -223,7 +223,7 @@ void test_stop_wakes_all_waiters(wc_test::suite & suite)
 //=============================================================================
 void test_stop_invalidates_handles(wc_test::suite & suite)
 {
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = 64});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 64});
     auto first = group.create_contract([] {});
     auto second = group.create_contract([] {});
 
@@ -239,10 +239,8 @@ void test_stop_invalidates_handles(wc_test::suite & suite)
 void test_blocking_release(wc_test::suite & suite)
 {
     std::uint64_t released{};
-    bcpp::blocking_work_contract_group<64> group(
-            {.capacity_ = 64},
-            {.contractReleased_ = [&](auto) { ++released; }});
-    auto contract = group.create_contract([] {});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = 64});
+    auto contract = group.create_contract([] {}, [&] { ++released; });
     contract.release();
 
     suite.check(group.execute_next_contract(1s), "blocking mode processes a pending release");
@@ -255,10 +253,10 @@ void test_blocking_release(wc_test::suite & suite)
 void test_multiple_blocking_workers(wc_test::suite & suite)
 {
     static constexpr auto contractCount = 256;
-    bcpp::blocking_work_contract_group<64> group({.capacity_ = contractCount});
+    bcpp::concurrency::blocking_work_contract_group<64> group({.capacity_ = contractCount});
     std::atomic<int> runs{};
     std::atomic<bool> running{true};
-    std::vector<bcpp::work_contract> contracts;
+    std::vector<bcpp::concurrency::work_contract> contracts;
     std::vector<std::thread> workers;
     contracts.reserve(contractCount);
 
@@ -270,7 +268,7 @@ void test_multiple_blocking_workers(wc_test::suite & suite)
         workers.emplace_back(
                 [&]
                 {
-                    bcpp::signal_id hint{};
+                    bcpp::concurrency::signal_id hint{};
                     while (running.load(std::memory_order_acquire))
                         group.execute_next_contract(hint, 100ms);
                 });

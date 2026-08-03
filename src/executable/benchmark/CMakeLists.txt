@@ -2,22 +2,13 @@
 
 add_executable(benchmark
     ./main.cpp
-    ${_work_contract_dir}/src/library/work_contract/work_contract_this.cpp
 )
 
 target_compile_options(benchmark PRIVATE -O3 -march=native)
 
-target_include_directories(benchmark
-PRIVATE
-    ${_work_contract_dir}/src
-    ${_include_dir}/src
-    ${_signal_tree_dir}/src
-)
-
 target_link_libraries(benchmark
 PRIVATE
-    pthread
-    rt
+    bcpp::work_contract
 )
 
 

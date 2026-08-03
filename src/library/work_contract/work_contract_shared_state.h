@@ -2,7 +2,7 @@
 
 #include "./work_contract_id.h"
 
-#include <include/signal_set.h>
+#include <library/signal_tree/signal_set.h>
 #include <include/synchronization_mode.h>
 
 #include <atomic>
@@ -11,7 +11,7 @@
 #include <vector>
 
 
-namespace bcpp
+namespace bcpp::concurrency
 {
 
     class work_contract;
@@ -203,4 +203,4 @@ namespace bcpp
         std::atomic<std::uint64_t>    referenceCount_{1};
     };
 
-} // namespace bcpp
+} // namespace bcpp::concurrency

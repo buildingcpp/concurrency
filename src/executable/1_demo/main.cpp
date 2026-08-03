@@ -7,7 +7,7 @@
 
 int main()
 {
-    bcpp::work_contract_group workContractGroup({.capacity_ = 256});
+    bcpp::concurrency::work_contract_group workContractGroup({.capacity_ = 256});
 
     auto counter = 0ull;
 
@@ -17,9 +17,9 @@ int main()
             {
                 std::cout << "recurrent contract, invocation " << ++counter << "\n";
                 if (counter < 3)
-                    bcpp::this_contract::schedule();
+                    bcpp::concurrency::this_contract::schedule();
             },
-            bcpp::work_contract::initial_state::scheduled);
+            bcpp::concurrency::work_contract::initial_state::scheduled);
 
     // a plain contract, scheduled on demand
     auto contract = workContractGroup.create_contract(
