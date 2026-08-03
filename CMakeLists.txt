@@ -3,8 +3,9 @@ set(CMAKE_CXX_STANDARD 20)
 
 project(work_contract)
 
-option(WORK_CONTRACT_BUILD_BENCHMARK "build work contract benchmarks" ON)
-option(WORK_CONTRACT_BUILD_EXAMPLES "build work contract examples" ON)
+option(WORK_CONTRACT_BUILD_BENCHMARK "build work contract throughput benchmark" ON)
+option(WORK_CONTRACT_BUILD_TESTS "build work contract tests (ctest)" ON)
+
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -15,18 +16,12 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(
         -g
         -O0
-        -march=native
-        -fPIE
-        -Wno-changes-meaning # tbb 
         -Wall
     )
 else()
     add_compile_options(
         -O3
         -g
-        -march=native
-        -fPIE
-        -Wno-changes-meaning # tbb
         -Wall
     )
 endif()
@@ -42,7 +37,6 @@ message("Build Type = ${CMAKE_BUILD_TYPE}")
 ###############################################################################
 # Fetch the main bcpp scripts which allows us to fetch other dependencies more easily
 ###############################################################################
-
 include(FetchContent)
 
 if ("${_scripts_src_path}" STREQUAL "")
@@ -65,21 +59,14 @@ endif()
 include("${_scripts_src_path}/cmake/fetch_dependencies.cmake")
 fetch_dependency("https://github.com/buildingcpp/include.git;main")
 
-if (WORK_CONTRACT_BUILD_BENCHMARK)
-    fetch_dependency("https://github.com/fmtlib/fmt.git;master")
-    fetch_dependency("https://github.com/cameron314/concurrentqueue.git;master")
-    #fetch_dependency("https://github.com/boostorg/lockfree.git;master")
-    fetch_dependency("https://github.com/erez-strauss/lockfree_mpmc_queue.git;master")
-    fetch_dependency("https://github.com/google/googletest.git;main")
-    set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
-    set(TBB_BUILD_TESTS OFF)
-    set(TBB_BUILD_SHARED OFF)
-    set(TBB_BUILD_STATIC ON)
-    fetch_dependency("https://github.com/wjakob/tbb.git;master")
-endif(WORK_CONTRACT_BUILD_BENCHMARK)
+set(SIGNAL_TREE_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+fetch_dependency("https://github.com/buildingcpp/signal_tree.git;main")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/${PROJECT_NAME})
 set(_${PROJECT_NAME}_dir ${CMAKE_CURRENT_SOURCE_DIR} CACHE STRING "")
 
-add_subdirectory(src)
+if (WORK_CONTRACT_BUILD_TESTS)
+    enable_testing()
+endif()
 
+add_subdirectory(src)

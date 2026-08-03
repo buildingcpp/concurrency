@@ -1,23 +1,54 @@
-add_executable(benchmark main.cpp)
+# work_contract throughput benchmark.  No external dependencies.
 
-target_compile_options(benchmark PRIVATE ${TBB_CXX_STD_FLAG})
+add_executable(benchmark
+    ./main.cpp
+    ${_work_contract_dir}/src/library/work_contract/work_contract_this.cpp
+)
+
+target_compile_options(benchmark PRIVATE -O3 -march=native)
 
 target_include_directories(benchmark
 PRIVATE
-    ${_concurrentqueue_src_path}
-    ${_lockfree_src_path}
-    ${_tbb_src_path}/include
-    ${_lockfree_mpmc_queue_src_path}
-    ${_googletest_src_path}
-    ${_fmt_src_path}/include
+    ${_work_contract_dir}/src
+    ${_include_dir}/src
+    ${_signal_tree_dir}/src
 )
 
-target_link_libraries(benchmark 
+target_link_libraries(benchmark
 PRIVATE
     pthread
     rt
-    work_contract
-    tbb_static
-    fmt
 )
 
+
+# ---------------------------------------------------------------------------
+# Optional: the same benchmark built against a frozen snapshot of the
+# pre-rewrite work_contract (+ its vendored signal_tree), so the two can be run
+# side by side.  Guarded because it compiles a copy of the old library.
+# ---------------------------------------------------------------------------
+if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/baseline/main_baseline.cpp)
+
+    add_executable(benchmark_baseline
+        ./baseline/main_baseline.cpp
+        ./baseline/vendor/library/work_contract/work_contract_group.cpp
+        ./baseline/vendor/library/work_contract/work_contract_this.cpp
+    )
+
+    target_compile_options(benchmark_baseline PRIVATE -O3 -march=native)
+
+    # NB: deliberately does *not* include the new signal_tree dependency; the
+    # baseline resolves <include/signal_tree.h> from its own frozen vendor tree.
+    target_include_directories(benchmark_baseline
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/baseline/vendor
+        ${_include_dir}/src
+    )
+
+    target_link_libraries(benchmark_baseline
+    PRIVATE
+        pthread
+        rt
+    )
+
+endif()

@@ -1,206 +1,206 @@
 #pragma once
 
-#include <include/synchronization_mode.h>
-#include <include/non_copyable.h>
+#include "./work_contract_id.h"
 
-#include <atomic>
+#include <include/non_copyable.h>
+#include <include/synchronization_mode.h>
+
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
-#include <memory>
-
-
-namespace bcpp::implementation
-{
-
-    template <synchronization_mode T>
-    class work_contract_group;
-
-    
-    template <synchronization_mode T>
-    class alignas(64) work_contract :
-        non_copyable
-    {
-    public:
-
-        using id_type = std::uint64_t;
-
-        enum class initial_state 
-        {
-            unscheduled = 0,
-            scheduled = 1
-        };
-
-        work_contract() = default;
-
-        ~work_contract();
-
-        work_contract(work_contract &&);
-        work_contract & operator = (work_contract &&);
-
-        void schedule();
-
-        bool release();
-
-        bool deschedule();
-
-        bool is_valid() const;
-
-        explicit operator bool() const;
-
-    private:
-
-        friend class work_contract_group<T>;
-        using work_contract_group_type = work_contract_group<T>;
-
-        work_contract
-        (
-            work_contract_group_type *, 
-            std::shared_ptr<typename work_contract_group_type::release_token>,
-            id_type,
-            initial_state = initial_state::unscheduled
-        );
-
-        id_type get_id() const;
-
-        work_contract_group_type *   owner_{};
-
-        std::atomic<std::shared_ptr<typename work_contract_group_type::release_token>> releaseToken_;
-
-        id_type                 id_{};
-
-    }; // class work_contract
-
-} // namespace bcpp::implementation
 
 
 namespace bcpp
 {
 
-    using work_contract = implementation::work_contract<synchronization_mode::non_blocking>;
-    using blocking_work_contract = implementation::work_contract<synchronization_mode::blocking>;
-}
+    template <std::size_t, synchronization_mode> class work_contract_group;
 
 
-#include "./work_contract_group.h"
+    //==============================================================================
+    class work_contract final :
+        non_copyable
+    {
+    public:
+
+        enum class initial_state
+        {
+            unscheduled = 0,
+            scheduled   = 1
+        };
+
+        work_contract() noexcept = default;
+
+        ~work_contract();
+
+        work_contract(work_contract &&) noexcept;
+        work_contract & operator = (work_contract &&) noexcept;
+
+        void schedule() noexcept;
+
+        bool release() noexcept;
+
+        bool is_valid() const noexcept;
+
+        explicit operator bool() const noexcept;
+
+    private:
+
+        template <std::size_t, synchronization_mode> friend class work_contract_group;
+
+        using operation = bool (*)(void *, work_contract_id, std::uint64_t) noexcept;
+        using operations = std::array<operation, 4>;
+
+        static auto constexpr schedule_operation = 0ull;
+        static auto constexpr release_operation = 1ull;
+        static auto constexpr is_valid_operation = 2ull;
+        static auto constexpr release_reference_operation = 3ull;
+
+        template <typename SharedState>
+        static operations const & get_operations() noexcept
+        {
+            static constexpr operations value
+            {
+                [](void * state, auto contractId, auto contractGeneration) noexcept
+                    {
+                        static_cast<SharedState *>(state)->schedule(contractId, contractGeneration);
+                        return true;
+                    },
+                [](void * state, auto contractId, auto contractGeneration) noexcept
+                    { return static_cast<SharedState *>(state)->release(contractId, contractGeneration); },
+                [](void * state, auto contractId, auto contractGeneration) noexcept
+                    { return static_cast<SharedState *>(state)->is_valid(contractId, contractGeneration); },
+                [](void * state, auto, auto) noexcept
+                    {
+                        static_cast<SharedState *>(state)->release_reference();
+                        return true;
+                    }
+            };
+            return value;
+        }
+
+        void reset() noexcept;
+
+        template <typename SharedState>
+        work_contract
+        (
+            SharedState * sharedState,
+            work_contract_id id,
+            std::uint64_t generation,
+            initial_state initialState
+        ) noexcept :
+            sharedState_(sharedState),
+            operations_(&get_operations<SharedState>()),
+            id_(id),
+            generation_(generation)
+        {
+            sharedState->add_reference();
+            if (initialState == initial_state::scheduled)
+                schedule();
+        }
+
+        void *                                          sharedState_{};
+
+        operations const *                              operations_{};
+
+        work_contract_id                                id_;
+
+        std::uint64_t                                   generation_{};
+
+    }; // class work_contract
+
+} // namespace bcpp
 
 
 //=============================================================================
-template <bcpp::synchronization_mode T>
-inline bcpp::implementation::work_contract<T>::work_contract
-(
-    work_contract_group_type * owner,
-    std::shared_ptr<typename work_contract_group_type::release_token> releaseToken, 
-    id_type id,
-    initial_state initialState
-):
-    owner_(owner),
-    releaseToken_(releaseToken),
-    id_(id)
-{
-    if (initialState == initial_state::scheduled)
-        schedule();
-}
-
-
-//=============================================================================
-template <bcpp::synchronization_mode T>
-inline bcpp::implementation::work_contract<T>::work_contract
+inline bcpp::work_contract::work_contract
 (
     work_contract && other
-):
-    owner_(other.owner_),
-    releaseToken_(other.releaseToken_.exchange(nullptr)),
-    id_(other.id_)
+) noexcept :
+    work_contract()
 {
-    other.owner_ = {};
-    other.id_ = {};
+    *this = std::move(other);
 }
 
-    
+
 //=============================================================================
-template <bcpp::synchronization_mode T>
-inline auto bcpp::implementation::work_contract<T>::operator =
+inline auto bcpp::work_contract::operator =
 (
     work_contract && other
-) -> work_contract &
+) noexcept -> work_contract &
 {
     if (this != &other)
     {
-        release();
-
-        owner_ = other.owner_;
-        id_ = other.id_;
-        releaseToken_ = other.releaseToken_.exchange(nullptr);
-        other.owner_ = {};
-        other.id_ = {};
+        reset();
+        sharedState_ = std::exchange(other.sharedState_, nullptr);
+        operations_ = std::exchange(other.operations_, nullptr);
+        id_ = std::exchange(other.id_, {});
+        generation_ = std::exchange(other.generation_, 0);
     }
     return *this;
 }
 
 
 //=============================================================================
-template <bcpp::synchronization_mode T>
-inline bcpp::implementation::work_contract<T>::~work_contract
+inline bcpp::work_contract::~work_contract
 (
 )
 {
-    release();
+    reset();
 }
 
 
 //=============================================================================
-template <bcpp::synchronization_mode T>
-inline auto bcpp::implementation::work_contract<T>::get_id
+inline void bcpp::work_contract::schedule
 (
-) const -> id_type
+    // the hot path.  the generation is passed through so that a handle which
+    // refers to a slot that has since been recycled is silently ignored.
+    //
+) noexcept
 {
-    return id_;
+    (*operations_)[schedule_operation](sharedState_, id_, generation_);
 }
 
 
 //=============================================================================
-template <bcpp::synchronization_mode T>
-inline void bcpp::implementation::work_contract<T>::schedule
+inline bool bcpp::work_contract::release
 (
-)
+) noexcept
 {
-    owner_->schedule(id_);
+    if (sharedState_ == nullptr)
+        return false;
+    return (*operations_)[release_operation](sharedState_, id_, generation_);
 }
 
 
 //=============================================================================
-template <bcpp::synchronization_mode T>
-inline bool bcpp::implementation::work_contract<T>::release
+inline void bcpp::work_contract::reset
 (
-)
+) noexcept
 {
-    if (auto releaseToken = releaseToken_.exchange(nullptr); releaseToken)
-    {
-        releaseToken->schedule(*this);
-        owner_ = {};
-        return true;
-    }
-    return false;
+    auto state = std::exchange(sharedState_, nullptr);
+    if (state == nullptr)
+        return;
+    (*operations_)[release_operation](state, id_, generation_);
+    (*operations_)[release_reference_operation](state, {}, 0);
 }
 
 
 //=============================================================================
-template <bcpp::synchronization_mode T>
-inline bool bcpp::implementation::work_contract<T>::is_valid
+inline bool bcpp::work_contract::is_valid
 (
-) const
+) const noexcept
 {
-    if (auto releaseToken = releaseToken_.load(); releaseToken)
-        return releaseToken->is_valid();
-    return false;
+    return
+        (sharedState_ != nullptr)
+        && ((*operations_)[is_valid_operation](sharedState_, id_, generation_));
 }
 
 
 //=============================================================================
-template <bcpp::synchronization_mode T>
-inline bcpp::implementation::work_contract<T>::operator bool
+inline bcpp::work_contract::operator bool
 (
-) const
+) const noexcept
 {
     return is_valid();
 }
