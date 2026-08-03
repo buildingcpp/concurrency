@@ -181,6 +181,46 @@ An optional strict-forward traversal is recorded as future work in
 [FUTURE_WORK.md](FUTURE_WORK.md). It is not part of the current selection
 contract.
 
+## Blocking selection
+
+Blocking selection is enabled at compile time:
+
+```cpp
+using blocking_signal_set =
+        bcpp::signal_set<1, bcpp::synchronization_mode::blocking>;
+
+blocking_signal_set signals{1024};
+auto hint = bcpp::signal_id{0};
+auto selected = signals.select(hint, std::chrono::milliseconds{10});
+```
+
+The duration overload first performs an ordinary immediate selection. If no
+signal is available, it waits until a signal becomes available, the timeout
+expires, or `stop()` interrupts the wait. A timeout of zero performs exactly one
+immediate selection attempt and never waits. Ordinary `select(hint)` remains
+immediate even on a blocking signal set or tree.
+
+### Stop contract
+
+`stop()` is a terminal state for waiting, not for signaling or selection. It
+wakes calls currently blocked in timed selection. A blocked call that observes
+the stopped state returns an invalid signal. Future timed selections still make
+their initial immediate selection attempt, but return invalid instead of waiting
+when that attempt finds no signal.
+
+Stopping does not clear raised signals. `set()`, ordinary immediate `select()`,
+and `try_select()` on a blocking `signal_tree` remain usable after stopping. A
+ready signal may therefore still be selected after `stop()`. If `stop()`,
+`set()`, and selection race, a timed selector may either return a signal or
+return invalid while a signal remains raised; `stop()` does not impose ordering
+on concurrent signal operations.
+
+Stopping is permanent and may be requested more than once. There is no restart
+operation. Before destroying a blocking signal set or tree, the owner must call
+`stop()` and join or otherwise synchronize with every thread that could still be
+executing a timed selection. Destruction while another thread is using the
+object is unsupported.
+
 ## Typical worker loop
 
 ```cpp

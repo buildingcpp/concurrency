@@ -248,7 +248,8 @@ namespace
                 bcpp::signal_tree<tree_depth> tree;
 
                 for (auto signal : ready)
-                    test_support::require(tree.set(bcpp::signal_id{signal}), "tree setup must raise every signal");
+                    test_support::require(tree.set(bcpp::signal_id{signal}),
+                            "tree setup must raise every signal");
 
                 require_selection_contract<Selector>(tree, ready, initialHint);
                 test_support::require(tree.empty(), "selection contract must drain the tree");

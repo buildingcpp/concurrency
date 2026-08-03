@@ -71,7 +71,8 @@ namespace
         auto hint = bcpp::signal_id{7};
 
         test_support::require(tree.empty(), "new signal tree must be empty");
-        test_support::require(not tree.select(hint).valid(), "empty signal tree must not select a signal");
+        test_support::require(not tree.select(hint).valid(),
+                "empty signal tree must not select a signal");
         test_support::require(not hint.valid(), "failed selection must invalidate the hint");
 
         auto const signal = bcpp::signal_id{bcpp::signal_tree<N>::capacity / 2};
@@ -85,7 +86,8 @@ namespace
         test_support::require(tree.set(signal), "a selected signal must be publishable again");
 
         hint = bcpp::signal_id{0};
-        test_support::require(tree.select(hint) == signal, "republished signal must be selectable");
+        test_support::require(tree.select(hint) == signal,
+                "republished signal must be selectable");
         test_support::require(tree.empty(), "republished signal must be cleared");
     }
 
@@ -97,10 +99,12 @@ namespace
         bcpp::signal_tree<N> tree;
 
         for (std::uint64_t index = 0; index < capacity; ++index)
-            test_support::require(tree.set(bcpp::signal_id{index}), "every clear signal must be publishable");
+            test_support::require(tree.set(bcpp::signal_id{index}),
+                    "every clear signal must be publishable");
 
         for (std::uint64_t index = 0; index < capacity; ++index)
-            test_support::require(not tree.set(bcpp::signal_id{index}), "full-tree duplicate set must fail");
+            test_support::require(not tree.set(bcpp::signal_id{index}),
+                    "full-tree duplicate set must fail");
 
         std::vector<unsigned char> seen(capacity, 0);
         auto hint = bcpp::signal_id{0};
@@ -114,7 +118,8 @@ namespace
             test_support::require(seen[selectedValue]++ == 0, "a signal must not be selected twice");
         }
 
-        test_support::require(not tree.select(hint).valid(), "drained tree must not yield another signal");
+        test_support::require(not tree.select(hint).valid(),
+                "drained tree must not yield another signal");
         test_support::require(tree.empty(), "drained tree must report empty");
 
         for (auto count : seen)
@@ -191,10 +196,14 @@ namespace
         constexpr auto denseChildBase = bcpp::signal_tree<N>::capacity - childCapacity;
         bcpp::signal_tree<N> tree;
 
-        test_support::require(tree.set(bcpp::signal_id{0}), "sparse child signal must be publishable");
-        test_support::require(tree.set(bcpp::signal_id{denseChildBase}), "dense child signal must be publishable");
-        test_support::require(tree.set(bcpp::signal_id{denseChildBase + 1}), "dense child signal must be publishable");
-        test_support::require(tree.set(bcpp::signal_id{denseChildBase + 2}), "dense child signal must be publishable");
+        test_support::require(tree.set(bcpp::signal_id{0}),
+                "sparse child signal must be publishable");
+        test_support::require(tree.set(bcpp::signal_id{denseChildBase}),
+                "dense child signal must be publishable");
+        test_support::require(tree.set(bcpp::signal_id{denseChildBase + 1}),
+                "dense child signal must be publishable");
+        test_support::require(tree.set(bcpp::signal_id{denseChildBase + 2}),
+                "dense child signal must be publishable");
 
         auto hint = bcpp::signal_id{0};
         auto const selected = tree.template select<bcpp::densest_child_selector>(hint);

@@ -77,7 +77,8 @@ namespace
             count.store(0, std::memory_order_relaxed);
 
         for (std::uint64_t index = 0; index < capacity; ++index)
-            test_support::require(tree.set(bcpp::signal_id{index}), "concurrent-selection setup must fill the tree");
+            test_support::require(tree.set(bcpp::signal_id{index}),
+                    "concurrent-selection setup must fill the tree");
 
         for (std::size_t thread = 0; thread < threadCount; ++thread)
             threads.emplace_back([&]
