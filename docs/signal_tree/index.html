@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signal Tree Benchmarks</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      line-height: 1.45;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 2rem;
+    }
+    section {
+      margin-top: 32px;
+      border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+      padding-top: 24px;
+    }
+    iframe {
+      width: 100%;
+      min-height: 560px;
+      border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+      border-radius: 10px;
+      background: Canvas;
+    }
+    a {
+      color: LinkText;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Signal Tree Benchmarks</h1>
+
+
+  <section>
+    <h2>Throughput</h2>
+    <p>
+      Static and adversarial throughput comparison across Signal Tree variants
+      and queue baselines.
+      <a href="signal_tree_throughput_interactive.html">Open standalone.</a>
+    </p>
+    <iframe src="signal_tree_throughput_interactive.html" title="Signal Tree throughput benchmark explorer" height=700></iframe>
+  </section>
+
+  <section>
+    <h2>Service Distance</h2>
+    <p>
+      Service-distance envelope, coverage failure, and selection-uniformity view.
+      <a href="signal_tree_service_distance_v2.html">Open standalone.</a>
+    </p>
+    <iframe src="signal_tree_service_distance_v2.html" title="Signal Tree service-distance benchmark explorer" height=500></iframe>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,212 @@
+<h2 class="sr-only">Interactive service distance explorer with envelope, selection CV, and coverage failure metrics.</h2>
+
+<div style="padding: 1rem 0;">
+
+  <div id="algo-group" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;">
+    <button data-algo="Signal Tree&lt;0&gt;" class="algo-btn algo-on" style="--swatch:#1d9e75;"><span class="sw"></span>Signal Tree&lt;0&gt;</button>
+    <button data-algo="Signal Tree&lt;1&gt;" class="algo-btn algo-on" style="--swatch:#639922;"><span class="sw"></span>Signal Tree&lt;1&gt;</button>
+    <button data-algo="Signal Tree&lt;4&gt;" class="algo-btn algo-on" style="--swatch:#7f77dd;"><span class="sw"></span>Signal Tree&lt;4&gt;</button>
+    <button data-algo="MoodyCamel" class="algo-btn algo-on" style="--swatch:#d85a30;"><span class="sw"></span>MoodyCamel</button>
+    <button data-algo="TBB" class="algo-btn algo-on" style="--swatch:#d4537e;"><span class="sw"></span>TBB</button>
+    <button data-algo="LockFree" class="algo-btn algo-on" style="--swatch:#888780;"><span class="sw"></span>LockFree</button>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 14px; font-size: 13px; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 280px;">
+      <span style="color: var(--color-text-secondary);">Threads</span>
+      <input type="range" id="threadSlider" min="1" max="16" value="16" step="1" style="flex: 1;" />
+      <span id="threadOut" style="font-weight: 500; min-width: 24px; text-align: right;">16</span>
+    </div>
+    <div>
+      <span style="color: var(--color-text-secondary); margin-right: 8px;">Scale</span>
+      <div id="scale-group" style="display: inline-flex; gap: 4px;">
+        <button data-val="linear" class="seg-btn seg-on">Linear</button>
+        <button data-val="log" class="seg-btn">Log</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="position: relative; width: 100%; height: 320px;">
+    <canvas id="sdChart" role="img" aria-label="Service distance percentile envelope">Service distance envelope.</canvas>
+  </div>
+
+  <div id="trilemma-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 14px;"></div>
+
+  <div id="readout" style="margin-top: 12px; font-size: 12px; color: var(--color-text-secondary); line-height: 1.55;"></div>
+
+</div>
+
+<style>
+.seg-btn { font-size: 13px; padding: 5px 12px; border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); border-radius: var(--border-radius-md); cursor: pointer; }
+.seg-btn.seg-on { background: var(--color-background-secondary); color: var(--color-text-primary); border-color: var(--color-border-secondary); }
+.algo-btn { font-size: 12px; padding: 5px 10px 5px 8px; border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); border-radius: var(--border-radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; opacity: 0.45; }
+.algo-btn.algo-on { opacity: 1; color: var(--color-text-primary); border-color: var(--color-border-secondary); }
+.algo-btn .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--swatch); }
+.metric-card { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; }
+.metric-card .label { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; }
+.metric-card .value { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
+.metric-card .sub { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+(() => {
+  // [threads, p50, p90, p99, p999, max, cov_pct, sel_cv]
+  const SD = {
+    'TBB': [[1,1.000,1.000,1.000,1.000,1.000,0,0.000676],[2,1.000,1.000,1.000,1.000,1.003,0,0.001584],[3,1.000,1.000,1.000,1.000,1.005,0,0.000888],[4,1.000,1.000,1.000,1.000,1.006,0,0.001799],[5,1.000,1.000,1.000,1.000,1.006,0,0.001864],[6,1.000,1.000,1.000,1.000,1.007,0,0.001933],[7,1.000,1.000,1.000,1.000,1.007,0,0.003043],[8,1.000,1.000,1.000,1.000,1.006,0,0.002541],[9,1.000,1.000,1.000,1.000,1.004,0,0.003564],[10,1.000,1.000,1.000,1.000,1.004,0,0.002114],[11,1.000,1.000,1.000,1.000,1.005,0,0.003821],[12,1.000,1.000,1.000,1.000,1.004,0,0.002853],[13,1.000,1.000,1.000,1.000,1.003,0,0.004132],[14,1.000,1.000,1.000,1.000,1.004,0,0.004891],[15,1.000,1.000,1.000,1.000,1.003,0,0.005637],[16,1.000,1.000,1.000,1.000,1.003,0,0.005297]],
+    'LockFree': [[1,1.000,1.000,1.000,1.000,1.000,0,0.000622],[2,1.000,1.000,1.000,1.006,1.525,0,0.001208],[3,1.000,1.000,1.000,1.000,1.006,0,0.001299],[4,1.000,1.000,1.000,1.000,1.005,0,0.003257],[5,1.000,1.000,1.000,1.001,1.010,0,0.000637],[6,1.000,1.000,1.001,1.001,1.005,0,0.003794],[7,1.000,1.000,1.001,1.001,1.005,0,0.003346],[8,1.000,1.000,1.001,1.001,1.008,0,0.003757],[9,1.000,1.000,1.001,1.001,1.007,0,0.004390],[10,1.000,1.000,1.001,1.002,1.004,0,0.004177],[11,1.000,1.000,1.001,1.002,1.004,0,0.003400],[12,1.000,1.000,1.001,1.002,1.005,0,0.003572],[13,1.000,1.001,1.002,1.002,1.007,0,0.001410],[14,1.000,1.001,1.002,1.003,1.009,0,0.001819],[15,1.000,1.001,1.002,1.003,1.006,0,0.004508],[16,1.000,1.001,1.002,1.003,1.006,0,0.003615]],
+    'Signal Tree<0>': [[1,0.994,1.796,1.979,1.998,2.000,0,0.005537],[2,0.996,1.798,1.983,2.119,2.398,0,0.004352],[3,0.997,1.799,1.982,2.031,2.333,0,0.002338],[4,0.998,1.799,1.982,2.029,2.447,0,0.004629],[5,0.997,1.800,1.980,1.999,2.031,0,0.015124],[6,0.997,1.802,1.984,2.116,2.701,0,0.023168],[7,0.998,1.802,1.983,2.001,2.986,0,0.025096],[8,0.999,1.801,1.982,2.001,2.664,0,0.027419],[9,0.995,1.801,1.982,2.001,2.192,0,0.037755],[10,0.998,1.802,1.983,2.001,2.497,0,0.041486],[11,0.998,1.803,1.986,2.116,3.053,0,0.044629],[12,0.999,1.802,1.985,2.073,2.762,0,0.046370],[13,0.996,1.802,1.983,2.001,2.377,0,0.044837],[14,0.999,1.803,1.984,2.002,2.507,0,0.053215],[15,0.998,1.803,1.985,2.003,3.096,0,0.055551],[16,0.998,1.803,1.987,2.158,3.051,0,0.056857]],
+    'Signal Tree<1>': [[1,0.994,1.796,1.979,1.998,2.000,0,0.005546],[2,0.997,1.802,1.988,2.120,2.394,0,0.040150],[3,0.998,1.806,1.990,2.032,2.333,0,0.072066],[4,0.999,1.810,1.994,2.119,2.399,0,0.089420],[5,0.997,1.814,1.996,2.013,2.037,0,0.110532],[6,0.996,1.816,1.998,2.014,2.048,0,0.134746],[7,0.998,1.818,2.001,2.019,2.685,0,0.148422],[8,0.998,1.820,2.003,2.114,3.392,0,0.158180],[9,0.998,1.821,2.005,2.022,2.720,0,0.175247],[10,1.000,1.823,2.007,2.023,2.421,0,0.193044],[11,0.999,1.824,2.008,2.126,3.752,0,0.195167],[12,0.999,1.825,2.009,2.029,3.949,0,0.203700],[13,0.998,1.825,2.010,2.026,2.876,0,0.212064],[14,1.000,1.828,2.012,2.029,2.793,0,0.232529],[15,0.999,1.829,2.014,2.033,3.752,0,0.237216],[16,0.999,1.829,2.014,2.032,4.208,0,0.240904]],
+    'Signal Tree<4>': [[1,0.994,1.796,1.979,1.998,2.000,0,0.005666],[2,0.997,1.801,1.989,2.125,2.387,0,0.043324],[3,0.999,1.811,1.996,2.048,2.324,0,0.112532],[4,0.998,1.821,2.006,2.139,2.631,0,0.156844],[5,0.999,1.827,2.010,2.030,2.516,0,0.177733],[6,0.997,1.836,2.021,2.125,2.989,0,0.218295],[7,0.999,1.844,2.030,2.055,2.838,0,0.261684],[8,0.998,1.852,2.040,2.082,2.578,0,0.299166],[9,0.997,1.859,2.047,2.069,2.830,0,0.338973],[10,0.997,1.868,2.058,2.093,2.883,0,0.370836],[11,0.996,1.875,2.066,2.091,2.943,0,0.405672],[12,0.995,1.886,2.079,2.108,3.085,0,0.446328],[13,0.994,1.894,2.088,2.112,3.054,0,0.478804],[14,0.993,1.905,2.102,2.128,2.790,0,0.520979],[15,0.969,1.968,2.328,2.574,3.203,0,0.519333],[16,0.943,2.006,2.468,2.712,3.503,0,0.461960]],
+    'MoodyCamel': [[1,0.500,0.500,0.500,0.500,0.500,50.0,1.000000],[2,0.651,0.704,0.807,0.850,0.856,33.3,0.707082],[3,0.001,0.001,0.001,0.001,0.062,99.9,36.950141],[4,0.001,2.173,2.236,2.379,2.399,50.0,1.006735],[5,0.001,1.518,1.530,1.654,1.658,49.9,1.001199],[6,0.001,2.326,2.353,2.423,2.438,49.8,1.001549],[7,0.000,3.186,3.216,3.238,3.268,50.0,1.005773],[8,0.000,4.052,4.094,4.167,4.277,49.9,1.007470],[9,0.001,2.544,2.606,2.623,2.637,50.0,1.003450],[10,0.000,3.641,3.780,3.799,3.812,49.9,1.006218],[11,0.001,0.002,6.041,6.067,6.094,49.9,1.012657],[12,0.001,0.002,5.958,5.985,6.007,49.9,1.012311],[13,0.001,3.631,3.763,3.803,3.824,49.9,1.005915],[14,0.001,0.002,7.545,7.578,7.602,49.9,1.017801],[15,0.001,0.002,7.998,8.035,8.070,49.9,1.021125],[16,0.001,0.002,8.201,8.229,8.257,49.9,1.022760]],
+  };
+  const STYLE = {
+    'Signal Tree<0>': { color:'#1d9e75', dash:[], point:'circle' },
+    'Signal Tree<1>': { color:'#639922', dash:[], point:'circle' },
+    'Signal Tree<4>': { color:'#7f77dd', dash:[], point:'circle' },
+    'MoodyCamel':     { color:'#d85a30', dash:[6,3], point:'rect' },
+    'TBB':            { color:'#d4537e', dash:[6,3], point:'rect' },
+    'LockFree':       { color:'#888780', dash:[2,3], point:'rect' },
+  };
+  const ALGO_ORDER = ['Signal Tree<0>','Signal Tree<1>','Signal Tree<4>','MoodyCamel','TBB','LockFree'];
+  const PCT_LABELS = ['p50','p90','p99','p99.9','max'];
+
+  const state = { threads: 16, scale: 'linear', enabled: new Set(ALGO_ORDER) };
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const textColor = isDark ? '#cccac4' : '#5f5e5a';
+
+  function row(a, t) { return SD[a][t-1]; }
+  function envelope(a, t) { const r = row(a, t); return [r[1], r[2], r[3], r[4], r[5]]; }
+
+  function buildDatasets() {
+    return ALGO_ORDER.filter(a => state.enabled.has(a)).map(a => {
+      const cov = row(a, state.threads)[6];
+      const s = STYLE[a];
+      return {
+        label: cov > 0 ? `${a}  ⚠ ${cov.toFixed(1)}% coverage failure` : a,
+        data: envelope(a, state.threads),
+        borderColor: s.color, backgroundColor: s.color,
+        borderDash: s.dash, borderWidth: 2.2,
+        pointStyle: s.point, pointRadius: 5, pointHoverRadius: 7, tension: 0.05,
+      };
+    });
+  }
+
+  const ctx = document.getElementById('sdChart').getContext('2d');
+  const fifoLine = {
+    id: 'fifoLine',
+    afterDraw(c) {
+      const { ctx, chartArea: ca, scales: { y } } = c;
+      const yp = y.getPixelForValue(1.0);
+      if (yp < ca.top || yp > ca.bottom) return;
+      ctx.save();
+      ctx.strokeStyle = textColor; ctx.setLineDash([2,3]); ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(ca.left, yp); ctx.lineTo(ca.right, yp); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle = textColor; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText('FIFO ideal 1.0×', ca.right - 4, yp - 4);
+      ctx.restore();
+    }
+  };
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: PCT_LABELS, datasets: buildDatasets() },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 180 },
+      interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => 'percentile: ' + items[0].label,
+            label: c => { const a = c.dataset.label.split('  ⚠')[0]; return `${a}  ${c.parsed.y.toFixed(3)}× active count`; }
+          },
+          backgroundColor: isDark ? 'rgba(40,40,40,0.95)' : 'rgba(255,255,255,0.97)',
+          titleColor: isDark ? '#fff' : '#222', bodyColor: isDark ? '#eee' : '#333',
+          borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)', borderWidth: 1, padding: 10,
+        },
+      },
+      scales: {
+        x: { ticks: { color: textColor, font:{ size: 12 } }, grid: { color: gridColor } },
+        y: { type: 'linear', min: 0, max: 10,
+             title: { display: true, text: 'Service distance (× active count)', color: textColor, font:{ size: 12 } },
+             ticks: { color: textColor, font:{ size: 11 }, callback: v => v.toFixed(v < 10 ? 1 : 0) + '×' },
+             grid: { color: gridColor } },
+      },
+    },
+    plugins: [fifoLine],
+  });
+
+  function fmtCV(v) { return v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(2) : v.toFixed(3); }
+
+  function refresh() {
+    document.getElementById('threadOut').textContent = state.threads;
+    chart.data.datasets = buildDatasets();
+    if (state.scale === 'log') {
+      chart.options.scales.y.type = 'logarithmic';
+      chart.options.scales.y.min = 0.0008; chart.options.scales.y.max = 10;
+      chart.options.scales.y.ticks.callback = v => v >= 1 ? v.toFixed(0) + '×' : v >= 0.01 ? v.toFixed(2) + '×' : v.toExponential(0) + '×';
+    } else {
+      chart.options.scales.y.type = 'linear';
+      chart.options.scales.y.min = 0; chart.options.scales.y.max = 10;
+      chart.options.scales.y.ticks.callback = v => v.toFixed(v < 10 ? 1 : 0) + '×';
+    }
+    chart.update();
+    renderTrilemma();
+  }
+
+  function renderTrilemma() {
+    const active = ALGO_ORDER.filter(a => state.enabled.has(a));
+    if (!active.length) { document.getElementById('trilemma-row').innerHTML = ''; document.getElementById('readout').textContent = ''; return; }
+
+    let bestEnv = null, bestSelCv = null, worstCov = null;
+    for (const a of active) {
+      const r = row(a, state.threads);
+      const p99 = r[3], cov = r[6], selCv = r[7];
+      if (cov === 0) {
+        if (!bestEnv || p99 < bestEnv.p99) bestEnv = { algo: a, p99 };
+        if (!bestSelCv || selCv < bestSelCv.selCv) bestSelCv = { algo: a, selCv };
+      }
+      if (cov > 0 && (!worstCov || cov > worstCov.cov)) worstCov = { algo: a, cov };
+    }
+
+    const cards = [];
+    cards.push(bestEnv
+      ? `<div class="metric-card"><div class="label">Tightest envelope (full coverage)</div><div class="value">p99 = ${bestEnv.p99.toFixed(3)}×</div><div class="sub">${bestEnv.algo}</div></div>`
+      : `<div class="metric-card"><div class="label">Tightest envelope (full coverage)</div><div class="value" style="color: var(--color-text-secondary);">—</div><div class="sub">no algorithm achieves full coverage</div></div>`);
+    cards.push(bestSelCv
+      ? `<div class="metric-card"><div class="label">Most uniform service (full coverage)</div><div class="value">sel CV = ${fmtCV(bestSelCv.selCv)}</div><div class="sub">${bestSelCv.algo}</div></div>`
+      : `<div class="metric-card"><div class="label">Most uniform service (full coverage)</div><div class="value" style="color: var(--color-text-secondary);">—</div><div class="sub">—</div></div>`);
+    cards.push(worstCov
+      ? `<div class="metric-card"><div class="label">Coverage failure</div><div class="value" style="color: var(--color-text-danger);">${worstCov.cov.toFixed(1)}%</div><div class="sub">${worstCov.algo}</div></div>`
+      : `<div class="metric-card"><div class="label">Coverage failure</div><div class="value" style="color: var(--color-text-success);">0%</div><div class="sub">every scheduled signal serviced</div></div>`);
+    document.getElementById('trilemma-row').innerHTML = cards.join('');
+
+    const failers = active.filter(a => row(a, state.threads)[6] > 0);
+    if (failers.length) {
+      const items = failers.map(a => `${a} ${row(a, state.threads)[6].toFixed(1)}%`).join(', ');
+      document.getElementById('readout').textContent = `Coverage failure at ${state.threads} thread${state.threads===1?'':'s'}: ${items}. Their percentiles describe only the subset of signals that actually received service.`;
+    } else {
+      document.getElementById('readout').textContent = '';
+    }
+  }
+
+  document.getElementById('threadSlider').addEventListener('input', e => { state.threads = parseInt(e.target.value, 10); refresh(); });
+  document.getElementById('scale-group').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-val]'); if (!btn) return;
+    document.getElementById('scale-group').querySelectorAll('button').forEach(b => b.classList.remove('seg-on'));
+    btn.classList.add('seg-on'); state.scale = btn.dataset.val; refresh();
+  });
+  document.getElementById('algo-group').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-algo]'); if (!btn) return;
+    const a = btn.dataset.algo;
+    if (state.enabled.has(a)) { if (state.enabled.size === 1) return; state.enabled.delete(a); btn.classList.remove('algo-on'); }
+    else { state.enabled.add(a); btn.classList.add('algo-on'); }
+    refresh();
+  });
+
+  refresh();
+})();
+</script>
